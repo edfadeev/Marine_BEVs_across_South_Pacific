@@ -3,10 +3,11 @@
 ###########################################
 library(tidyverse)
 library(ggpmisc)
+library(ggpattern)
 
 source("source/ggplot_parameters.R")
 
-#process NTA output
+#processggpattern#process NTA output
 source("source/process_NTA_results.R")
 
 ###########################################
@@ -135,3 +136,67 @@ ggsave("./Figures/FCM_NTA_plot.pdf",
        height = 90, 
        scale = 2,
        dpi = 300)
+
+
+###########################################
+#Estimate effect of density gradient separation on concentrations
+###########################################
+#before density gradient
+SummaryData_df_no_dens_total<- SummaryData_df_no_dens%>% 
+  group_by(Region,Station_ID,Replicate) %>% 
+  summarize(Part.conc=sum(Part.conc)) %>% 
+  group_by(Region,Station_ID) %>% 
+  summarize(Total.conc= mean(Part.conc), Total.SD= sd(Part.conc))
+
+#after density gradient
+SummaryData_df_total<- SummaryData_df %>% 
+  group_by(Region,Station_ID,Replicate) %>% 
+  summarize(Part.conc=sum(Part.conc)) %>% #sum all fractions to compare the totals
+  group_by(Region,Station_ID) %>% 
+  summarize(Mean.conc= mean(Part.conc), SD.conc= sd(Part.conc))
+
+
+#plot abundances
+merge(SummaryData_df_total,SummaryData_df_no_dens_total,
+      by=c("Region","Station_ID")) %>% 
+  select(Region, Station_ID, Mean.conc, Total.conc) %>% 
+  reshape2::melt() %>% 
+  mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP"))) %>% 
+  ggplot(aes(x= Station_ID, y = 1000*value, fill = Region, group =variable))+
+  #geom_col(position = "dodge")+ 
+  geom_col_pattern(aes(pattern=variable),
+                   #pattern = 'stripe',
+                   position = position_dodge(width = .8), width=.7, #pattern_density = 0.5,
+                   colour ="black")+
+  #ggbreak::scale_y_break(c(8e8, 1e9), scales= c(1,3))+
+  labs(y="Concentration (# L-1)", x = "Station")+
+  scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
+  scale_pattern_manual(values=c('stripe', 'wave'))+
+  facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")+
+  theme_EF+
+  theme(axis.text.x= element_blank(),
+        axis.title.x= element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "bottom", 
+        plot.title = element_text(hjust = 0.5))
+
+#save the plot
+ggsave("./Figures/density_gradient.pdf",
+       plot = last_plot(),
+       units = "mm",
+       width = 180,
+       height = 90, 
+       scale = 2,
+       dpi = 300)
+
+#calculate ratios
+merge(SummaryData_df_total,
+      SummaryData_df_no_dens_total,
+      by=c("Region","Station_ID")) %>% 
+  mutate(Ratio=Mean.conc/Total.conc) %>% 
+  View()
+
+#print session info and clean the workspace
+sessionInfo()
+rm(list = ls())
+gc()
