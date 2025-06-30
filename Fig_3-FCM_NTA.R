@@ -111,16 +111,20 @@ FCM_NTA_plot<- counts_all %>% select("Region","Station_ID", "Type", "Cell_conc")
           dplyr::rename(Concentration=Mean.conc)) %>% 
   mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP"))) %>% 
   ggplot(aes(x= Station_ID, y = Concentration, fill = Region, group =Type))+
-  #geom_col(position = "dodge")+ 
-  geom_col_pattern(aes(pattern=Type),
-                   #pattern = 'stripe',
-                   position = position_dodge(width = .8), width=.7, #pattern_density = 0.5,
-                   colour ="black")+
-  ggbreak::scale_y_break(c(6e8, 1e9), scales= c(1,3))+
+  geom_point(aes(shape = Type),colour = "black",  size =6)+ 
+  geom_point(aes(colour = Region, shape = Type), size =5)+ 
+  #geom_col_pattern(aes(pattern=Type),
+  #                 #pattern = 'stripe',
+  #                 position = position_dodge(width = .8), width=.7, #pattern_density = 0.5,
+  #                 colour ="black")+
+  #ggbreak::scale_y_break(c(6e8, 1e9), scales= c(1,3))+
   labs(y="Concentration (# L-1)", x = "Station")+
   scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
+  scale_colour_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
   scale_pattern_manual(values=c('stripe', 'wave'))+
+  scale_shape_manual(values=c(22,24))+
   facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")+
+  scale_y_log10()+
   theme_EF+
   theme(axis.text.x= element_blank(),
         axis.title.x= element_blank(),
@@ -137,6 +141,34 @@ ggsave("./Figures/FCM_NTA_plot.pdf",
        scale = 2,
        dpi = 300)
 
+
+
+FCM_NTA_boxplot<-counts_all %>% select("Region","Station_ID", "Type", "Cell_conc") %>% 
+  dplyr::rename(Concentration=Cell_conc) %>% 
+  rbind(EVs_total_conc %>% select("Region","Station_ID", "Type", "Mean.conc") %>% 
+          dplyr::rename(Concentration=Mean.conc)) %>% 
+  mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP")),
+         Type=case_when(Type=="EVs"~"BEVs", TRUE~Type)) %>% 
+  ggplot(aes(x= Type, y = Concentration, fill = Region, group =interaction(Region, Type)))+
+  geom_boxplot(outliers = TRUE)+
+  scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
+  facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")+
+  scale_y_log10()+
+  theme_EF+
+  theme(#axis.text.x= element_blank(),
+    #axis.title.x= element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "none", 
+    plot.title = element_text(hjust = 0.5))
+
+#save the plot
+ggsave("./Figures/FCM_NTA_boxplot.pdf",
+       plot = FCM_NTA_boxplot,
+       units = "mm",
+       width = 180,
+       height = 90, 
+       scale = 2,
+       dpi = 300)
 
 ###########################################
 #Estimate effect of density gradient separation on concentrations
