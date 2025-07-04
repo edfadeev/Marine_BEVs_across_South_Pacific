@@ -8,7 +8,8 @@ Bacterial extracellular vesicles (BEVs) are spherical membrane-bound structures 
 
 ### Content:
 **data** - raw input data and metadata. \
-**scripts** - supporting scripts for the statistical analysis. \
+**slurm_scripts** - bash scripts for metagenomic analysis. \
+**scripts** - supporting R scripts for the statistical analysis. \
 ```Fig_1_S1-ecosystem.R``` -  Phytoplankton taxonomic composition and nutrient plots. \
 ```Fig_2-metagenomes_tax_composition.R``` - Taxonomic composition of bacterial communities. \
 ```Fig_3_S3-FCM_NTA.R``` - Cell abudnance,  BEVs concentration and size distribution plots. \
