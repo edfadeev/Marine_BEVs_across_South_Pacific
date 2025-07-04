@@ -5,19 +5,20 @@ library(tidyverse)
 library(ggpmisc)
 library(ggpattern)
 
+#ggplot configuration
 source("source/ggplot_parameters.R")
-
-#processggpattern#process NTA output
-source("source/process_NTA_results.R")
 
 ###########################################
 #Plot size distribution
 ###########################################
+#process NTA output
+source("source/process_NTA_results.R")
+
 tidy_data_filt_total<- tidy_data_filt %>% 
   group_by(Station_ID) %>% 
   summarize(Part.n=n())
 
-
+#plot size distribution
 EVs_size.p<- tidy_data_filt %>% left_join(tidy_data_filt_total, by="Station_ID") %>% 
   ggplot(aes(x=Station_ID, y=Size.nm, group=Station_ID, fill=Region)) +
   #geom_violin(outliers = TRUE)+ 
@@ -41,7 +42,6 @@ ggsave("./Figures/NTA_size_dist.pdf",
        height = 90, 
        scale = 2,
        dpi = 300)
-
 
 #calculate mean of the triplicates selected based on ParticleData
 EVs_mean_conc<- SummaryData_df%>% 
@@ -85,11 +85,13 @@ EVs_total_conc.p<- EVs_total_conc %>% ggplot(aes(x= Station_ID, y = Mean.conc, g
 ###########################################
 #Cell counts
 ###########################################
+#import cell counts
 counts_all<- read.table("data/FCM_cell_counts.txt") %>% 
                 mutate(Cell_conc=Cell_conc*1000,
                        Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP")),
                        Type="Cells")
 
+#plot cell counts
 Cells_conc.p<- counts_all %>% ggplot(aes(x= Station_ID, y = Cell_conc, fill = Region))+
   geom_col(position = "dodge")+ 
   labs(y="Concentration (cells L-1)", x = "Station")+
@@ -104,7 +106,7 @@ Cells_conc.p<- counts_all %>% ggplot(aes(x= Station_ID, y = Cell_conc, fill = Re
   facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")
 
 
-
+#combined figure cells and BEVs abundance
 FCM_NTA_plot<- counts_all %>% select("Region","Station_ID", "Type", "Cell_conc") %>% 
   dplyr::rename(Concentration=Cell_conc) %>% 
   rbind(EVs_total_conc %>% select("Region","Station_ID", "Type", "Mean.conc") %>% 
@@ -113,11 +115,6 @@ FCM_NTA_plot<- counts_all %>% select("Region","Station_ID", "Type", "Cell_conc")
   ggplot(aes(x= Station_ID, y = Concentration, fill = Region, group =Type))+
   geom_point(aes(shape = Type),colour = "black",  size =6)+ 
   geom_point(aes(colour = Region, shape = Type), size =5)+ 
-  #geom_col_pattern(aes(pattern=Type),
-  #                 #pattern = 'stripe',
-  #                 position = position_dodge(width = .8), width=.7, #pattern_density = 0.5,
-  #                 colour ="black")+
-  #ggbreak::scale_y_break(c(6e8, 1e9), scales= c(1,3))+
   labs(y="Concentration (# L-1)", x = "Station")+
   scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
   scale_colour_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
@@ -135,35 +132,6 @@ FCM_NTA_plot<- counts_all %>% select("Region","Station_ID", "Type", "Cell_conc")
 #save the plot
 ggsave("./Figures/FCM_NTA_plot.pdf",
        plot = FCM_NTA_plot,
-       units = "mm",
-       width = 180,
-       height = 90, 
-       scale = 2,
-       dpi = 300)
-
-
-
-FCM_NTA_boxplot<-counts_all %>% select("Region","Station_ID", "Type", "Cell_conc") %>% 
-  dplyr::rename(Concentration=Cell_conc) %>% 
-  rbind(EVs_total_conc %>% select("Region","Station_ID", "Type", "Mean.conc") %>% 
-          dplyr::rename(Concentration=Mean.conc)) %>% 
-  mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP")),
-         Type=case_when(Type=="EVs"~"BEVs", TRUE~Type)) %>% 
-  ggplot(aes(x= Type, y = Concentration, fill = Region, group =interaction(Region, Type)))+
-  geom_boxplot(outliers = TRUE)+
-  scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
-  facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")+
-  scale_y_log10()+
-  theme_EF+
-  theme(#axis.text.x= element_blank(),
-    #axis.title.x= element_blank(),
-    axis.ticks.x = element_blank(),
-    legend.position = "none", 
-    plot.title = element_text(hjust = 0.5))
-
-#save the plot
-ggsave("./Figures/FCM_NTA_boxplot.pdf",
-       plot = FCM_NTA_boxplot,
        units = "mm",
        width = 180,
        height = 90, 

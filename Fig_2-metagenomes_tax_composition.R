@@ -14,9 +14,9 @@ samples_meta_df<- read.table("data/samples_meta.txt", sep ="\t", header = TRUE, 
 #import kraken reports
 k_reports<- readRDS("./data/kraken_reports.rds")
 
-##########################################
-# Generate summary and proportions       #
-##########################################
+##################################################
+# Generate summary and proportions from kreports #
+##################################################
 #reads overview
 reports_overview<- summarize_reports(k_reports) %>% 
   tibble::rownames_to_column("Station_ID") %>% 

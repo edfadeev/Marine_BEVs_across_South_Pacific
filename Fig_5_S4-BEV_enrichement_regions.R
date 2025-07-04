@@ -134,7 +134,6 @@ DEqMS_results_Class_tax %>%
          Enr.frac=ifelse(Enr.frac=="EVs","BEVs",Enr.frac)) %>%   
   ggplot(aes(x=Enr.frac, y= Prop, fill = Taxa))+
   geom_col()+
-  #geom_text(aes(label=Total_p), y=1, vjust=0.1, size = 5)+
   scale_fill_manual(values = taxa_shades)+
   facet_grid(cols=vars(Enr.group),scales="free_x",space="free_x",switch="x") +
   theme_EF+
