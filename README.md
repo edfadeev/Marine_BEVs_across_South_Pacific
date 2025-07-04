@@ -9,12 +9,12 @@ Bacterial extracellular vesicles (BEVs) are spherical membrane-bound structures 
 ### Content:
 **data** - raw input data and metadata. \
 **scripts** - supporting scripts for the statistical analysis. \
-```Fig_1_S1-ecosystem.R``` -  \
-```Fig_2-metagenomes_tax_composition.R``` -  \
-```Fig_3_S3-FCM_NTA.R``` -  \
-```Fig_4-BEV_enrichements.R``` -  \
-```Fig_5_S4-BEV_enrichement_regions.R``` -  \
-```Fig_S2-Cell_prot_dissimilarity.R``` -  \
+```Fig_1_S1-ecosystem.R``` -  Phytoplankton taxonomic composition and nutrient plots. \
+```Fig_2-metagenomes_tax_composition.R``` - Taxonomic composition of bacterial communities. \
+```Fig_3_S3-FCM_NTA.R``` - Cell abudnance,  BEVs concentration and size distribution plots. \
+```Fig_4-BEV_enrichements.R``` - Sub-cellular localization of enriched proteins between bacterial cells and EVs across the entire dataset. \
+```Fig_5_S4-BEV_enrichement_regions.R``` - Functional analysis of proteins enriched between cells and BEVs in different regions. \
+```Fig_S2-Cell_prot_dissimilarity.R``` - Dissimilarity of cellular proteomes. \
 
 
 ### Author:
