@@ -294,7 +294,7 @@ DEqMS_results_Flavo_all<- DEqMS_results %>% left_join(protein_taxonomy, by = "ge
 ############################
 #Plot enrichment of relevant proteins 
 ############################
-DEqMS_results%>% filter(Enr.frac %in% c("Cells","EVs")) %>% left_join(protein_annotations, by = "gene_callers_id") %>% 
+DEqMS_results_plot<- DEqMS_results%>% filter(Enr.frac %in% c("Cells","EVs")) %>% left_join(protein_annotations, by = "gene_callers_id") %>% 
   mutate(Prot_group=case_when(NCBIfam_acc %in% SusCD_acc | Pfam_acc%in% SusCD_acc |
                                 grepl("Sus", InterPro_ann, ignore.case =TRUE)|
                                 grepl("Sus", blastp_ann, ignore.case =TRUE) ~"SusCD transport system",
@@ -307,15 +307,19 @@ DEqMS_results%>% filter(Enr.frac %in% c("Cells","EVs")) %>% left_join(protein_an
                               grepl("porin", InterPro_ann, ignore.case = TRUE)|
                                 grepl("iron uptake porin", NCBIfam_ann, ignore.case = TRUE)|
                                 grepl("porin", Pfam_ann, ignore.case = TRUE)|
-                                grepl("iron uptake porin", blastp_ann, ignore.case = TRUE) ~ "Porins"),
-         Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN","UP"))) %>%  
+                                grepl("iron uptake porin", blastp_ann, ignore.case = TRUE) ~ "Porins")) %>%  
   filter(!is.na(Prot_group)) %>% 
   group_by(Enr.group, Enr.frac, Prot_group) %>% 
-  summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n()) %>% 
+  summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n()) 
+
+
+DEqMS_results_plot %>% left_join(DEqMS_results_totals, by =c("Enr.group", "Enr.frac")) %>% 
+  mutate(prot_prop= count/Total_p,
+         Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN","UP"))) %>% 
   ggplot(aes(y=log2fold_mean , x=Prot_group, colour = Enr.group, label = count))+ 
   #geom_point(size = 2, position = position_dodge(width = 1))+
   geom_text(position = position_dodge(width = 1))+
-  geom_point(shape = 21, position = position_dodge(width = 1), aes(size = count,  colour = Enr.group))+
+  geom_point(shape = 21, position = position_dodge(width = 1), aes(size = prot_prop,  colour = Enr.group))+
   scale_size_continuous(range = c(1, 20))+
   geom_errorbar(aes(ymin = log2fold_mean-log2fold_se, ymax = log2fold_mean +log2fold_se), 
                 width = 0.2, position = position_dodge(width = 1)) + 
