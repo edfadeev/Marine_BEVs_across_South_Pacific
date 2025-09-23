@@ -28,10 +28,12 @@ protein_metadata<- read.table("data/SO289_clust99_RC_PeptideGroups.txt", sep ="\
   rename_at(all_of(samples_df$File.ID), ~ samples_df$Sample_ID)%>%
   filter(Number.of.PSMs>1, gene_callers_id!="", PSM.Ambiguity!="Rejected") %>% #include only peptides with at least two PSMs
   mutate(gene_callers_id=as.character(gene_callers_id),
-         Unique.Peptides = case_when(grepl(";",Positions.in.Master.Proteins)~ 0, TRUE ~ 1)) %>% 
+         Unique.Peptides = case_when(grepl(";",Positions.in.Master.Proteins)~ 0, TRUE ~ 1),
+         Razor.Peptides = case_when(grepl(";",Positions.in.Master.Proteins)~ 1, TRUE ~ 0)) %>% 
   group_by(gene_callers_id) %>% 
-  summarize(Number.of.Peptides=n(), Number.of.PSMs=sum(Number.of.PSMs), Number.of.Unique.Peptide=sum(Unique.Peptides)) %>% 
-  filter(Number.of.Peptides>1, Number.of.Unique.Peptide> 0) %>% # remove proteins with less than 2 peptides and without unique peptides 
+  summarize(Number.of.Peptides=n(), Number.of.PSMs=sum(Number.of.PSMs), Number.of.Unique.Peptide=sum(Unique.Peptides), Number.of.Razor.Peptide=sum(Razor.Peptides)) %>% 
+  filter(#Number.of.Peptides>1, 
+         Number.of.Unique.Peptide> 0) %>% # remove proteins with less than 2 peptides and without unique peptides
   as.data.frame()
 
 row.names(protein_metadata)<- protein_metadata$gene_callers_id
