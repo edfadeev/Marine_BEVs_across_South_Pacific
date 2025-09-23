@@ -24,9 +24,10 @@ vir_gcids_ann <-protein_annotations %>%
                   filter(grepl("phage|virus|capsid|Tail sheath",Pfam_ann, ignore.case = TRUE)|
                                                grepl("phage|virus|capsid|Tail sheath",InterPro_ann, ignore.case = TRUE)|
                                                NCBIfam_acc %in% c("TIGR01554", "TIGR02126", "TIGR01543")) %>% pull(gene_callers_id)
+vir_gcids<- c(vir_gcids_taxa, vir_gcids_ann)
 
 #summarize how many viral proteins per sample
-viral_prot_per_sample <- protein_abund[c(vir_gcids_taxa, vir_gcids_ann),] %>%
+viral_prot_per_sample <- protein_abund[vir_gcids,] %>%
   reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
   filter(Abund>0) %>% 
   left_join(samples_df, by = "Sample_ID") %>% 
@@ -96,7 +97,9 @@ contrast <-  makeContrasts(contrasts="EVs-Cells",levels=design)
 EV_sample_IDs<- samples_df %>% filter(Fraction =="EVs") %>% pull(Sample_ID)
 Cell_sample_IDs<- samples_df %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
 
-prot.dat.log2_norm.filter<- prot.dat.log2_norm[, c(EV_sample_IDs, Cell_sample_IDs)]
+prot.dat.log2_norm_no_vir<- prot.dat.log2_norm[!row.names(prot.dat.log2_norm) %in% vir_gcids,] #remove viral proteins
+
+prot.dat.log2_norm.filter<- prot.dat.log2_norm_no_vir[, c(EV_sample_IDs, Cell_sample_IDs)]
 
 # Filter proteins that were observed in at least two samples in each fraction
 prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[rowSums(!is.na(prot.dat.log2_norm.filter[, c(EV_sample_IDs)]))>1 &
@@ -154,7 +157,7 @@ DEqMS_results_loc %>% filter(Enr.frac!="Not.enr") %>%
   ylab("Proportion of enriched proteins (%)")+
   theme_EF+
   guides(fill = guide_legend(title="Sub-cellular localization", ncol = 2))+
-  theme(legend.position = "none",
+  theme(legend.position = "bottom",
         axis.title.x = element_blank())
 
 #save the plot
@@ -222,7 +225,7 @@ DEqMS.results %>% filter(Enr.frac!="Not.enr") %>%
   left_join(protein_taxonomy, by = "gene_callers_id") %>% 
   left_join(protein_localization,  by="gene_callers_id") %>% 
   select(Enr.frac, logFC, sca.adj.pval, starts_with("InterPro_"), starts_with("NCBIfam_"),
-         starts_with("Pfam_"), deeploc, Domain, Phylum, Class,Order,Family,Genus) %>% 
+         starts_with("Pfam_"), deeploc, Domain, Phylum, Class,Order,Family,Genus) %>% View()
   openxlsx::write.xlsx(., colNames = TRUE, 
                        file= 'Tables/Table_S3-DEqMS_results_Fractions.xlsx')
 

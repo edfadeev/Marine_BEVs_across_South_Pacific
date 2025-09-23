@@ -22,6 +22,8 @@ non_cyto_prot<- protein_localization %>%
   filter(deeploc %in% c("Outer Membrane","Extracellular", "Cell wall & surface")) %>% 
   pull(gene_callers_id)
 
+non_cyto_prot<- non_cyto_prot[!non_cyto_prot %in% vir_gcids]
+  
 #carry out enrichment tests based on regions
 enrichment_tests_list <- lapply(c("UP","TRAN","GYRE","WEST"), function(x) {
   
@@ -120,8 +122,7 @@ DEqMS_results_Class_tax %>%
   mutate(Order=gsub("Candidatus |Candidatus","",Order),
           Taxa=case_when(Prop<1 ~"Other taxa < 1%", 
                         is.na(Order) | Order=="NA" |Order=="NA_uncl" | Order=="Unknown" ~"unclassified",
-                        Order %in% c("Algavirales","Caudoviricetes_uncl") ~ "Viral",
-                        TRUE~Order)) %>% 
+                        TRUE~Order)) %>%  View()
   mutate(Taxa = factor(Taxa, levels=c( "Caulobacterales", 
                                        "Hyphomicrobiales" , 
                                        "Hyphomonadales","Kordiimonadales", "Minwuiales","Parvularculales","Pelagibacterales" ,"Puniceispirillales",
@@ -131,7 +132,7 @@ DEqMS_results_Class_tax %>%
                                        "Oceanospirillales" , "Pseudomonadales" , "Sphingobacteriales", "Gammaproteobacteria_uncl", 
                                        "Other taxa < 1%", "Viral", "unclassified")),
          Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN","UP")),
-         Enr.frac=ifelse(Enr.frac=="EVs","BEVs",Enr.frac)) %>%   
+         Enr.frac=ifelse(Enr.frac=="EVs","BEVs",Enr.frac)) %>%  
   ggplot(aes(x=Enr.frac, y= Prop, fill = Taxa))+
   geom_col()+
   scale_fill_manual(values = taxa_shades)+
