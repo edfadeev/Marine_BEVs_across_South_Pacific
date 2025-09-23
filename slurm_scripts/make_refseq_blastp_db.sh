@@ -11,7 +11,7 @@
 module load ncbiblastplus/2.16.0
 
 # Directory that will contain the blastp index
-DBDIR=/lisc/scratch/oceanography/efadeev/ref_dbs/NCBI
+DBDIR=/lisc/scratch/oceanography/efadeev/resources/ref_dbs/NCBI
 
 cd $TMPDIR
 

@@ -8,7 +8,7 @@
 #SBATCH --time=4:00:00
 
 #load module
-module load dbcan/5.0.6-3.13.3
+module load dbcan/5.1.1-3.13.3
 
 #generate array with protein chunk names
 i=0
