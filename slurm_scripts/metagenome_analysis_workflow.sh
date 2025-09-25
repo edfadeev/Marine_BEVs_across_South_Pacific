@@ -21,7 +21,7 @@ screen -S SO289_anvio
 module load conda
 
 #Activate conda environment:
-conda activate anvio-dev
+conda activate anvio-8
 
 #Define working directory
 WORKDIR=/lisc/scratch/oceanography/efadeev/SO289/SO289_coassembly/ && cd $WORKDIR
@@ -78,14 +78,14 @@ prot_GCIDs=$(cat 11_PROTEIN/R_data/prot_GCIDs.txt)
 #Export basic annotation of proteins from Anvio
 ################################################################
 
-DATABASES=("COG20_FUNCTION" "COG20_CATEGORY")
+DATABASES=("COG20_FUNCTION" "COG20_CATEGORY" "KOfam")
 for db in "${DATABASES[@]}"
 do
 sbatch -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,db=$db \
 --job-name "export_protein_annotation" $REPO_DIR/slurm_scripts/export_anvio_annotations.sh
 done
 
-"KOfam"
+
 ################################################################
 #Further annotate only proteins that were identified in the MS analysis
 ################################################################
@@ -196,6 +196,13 @@ mkdir $WORKDIR/11_PROTEIN/temp_dbcan/
 sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_dbcan" $REPO_DIR/slurm_scripts/run_dbcan.sh
 
 #merge output from all chuncks
+for file in ${bins[@]};
+do
+chunk=$(basename $file)
+awk -v chunk="$chunk" 'BEGIN{OFS=FS="\t"} NR > 1 && $6 > 1 {print file, $1, $2, $7}' $WORKDIR/11_PROTEIN/temp_dbcan/${chunk}/overview.tsv > \
+$WORKDIR/11_PROTEIN/temp_dbcan/${chunk}_dbcan_results.tsv
+done
+
 cat $WORKDIR/11_PROTEIN/temp_dbcan/*dbcan_results.tsv| 
 awk 'BEGIN{OFS="\t"}; NR==1{print "gene_callers_id","EC_number","annotation"}; \
 {print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_dbcan.txt

@@ -15,31 +15,10 @@ se <- function(x, na.rm=FALSE) {
 
 
 ############################
-#Explore viral proteins in BEVs fraction
-############################
-vir_gcids_taxa<- protein_taxonomy %>% 
-  filter(grepl("Viruses", Domain))%>% pull(gene_callers_id)
-
-vir_gcids_ann <-protein_annotations %>% 
-                  filter(grepl("phage|virus|capsid|Tail sheath",Pfam_ann, ignore.case = TRUE)|
-                                               grepl("phage|virus|capsid|Tail sheath",InterPro_ann, ignore.case = TRUE)|
-                                               NCBIfam_acc %in% c("TIGR01554", "TIGR02126", "TIGR01543")) %>% pull(gene_callers_id)
-vir_gcids<- c(vir_gcids_taxa, vir_gcids_ann)
-
-#summarize how many viral proteins per sample
-viral_prot_per_sample <- protein_abund[vir_gcids,] %>%
-  reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
-  filter(Abund>0) %>% 
-  left_join(samples_df, by = "Sample_ID") %>% 
-  group_by(Region,Station_ID,Fraction) %>% 
-  summarize(N_prot=n()) %>% 
-  tidyr::spread(Fraction, N_prot)
-
-############################
 #Protein overlap between fractions
 ############################
 prot_overlap_ls <- lapply(paste0(samples_df$Station_ID,"_"), function(s){
-  st<- protein_abund %>% rownames_to_column("gene_callers_id") %>% 
+  st<- protein_abund_no_vir %>% rownames_to_column("gene_callers_id") %>% 
     dplyr::select(gene_callers_id, starts_with(match=s)) %>% 
     reshape2::melt(value.name = "Abund") %>% 
     mutate(Fraction = case_when(grepl("Cells", variable)~ "Cells", grepl("EVs", variable)~ "EVs")) %>% 
@@ -97,9 +76,7 @@ contrast <-  makeContrasts(contrasts="EVs-Cells",levels=design)
 EV_sample_IDs<- samples_df %>% filter(Fraction =="EVs") %>% pull(Sample_ID)
 Cell_sample_IDs<- samples_df %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
 
-prot.dat.log2_norm_no_vir<- prot.dat.log2_norm[!row.names(prot.dat.log2_norm) %in% vir_gcids,] #remove viral proteins
-
-prot.dat.log2_norm.filter<- prot.dat.log2_norm_no_vir[, c(EV_sample_IDs, Cell_sample_IDs)]
+prot.dat.log2_norm.filter<- prot.dat.log2_norm[, c(EV_sample_IDs, Cell_sample_IDs)]
 
 # Filter proteins that were observed in at least two samples in each fraction
 prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[rowSums(!is.na(prot.dat.log2_norm.filter[, c(EV_sample_IDs)]))>1 &

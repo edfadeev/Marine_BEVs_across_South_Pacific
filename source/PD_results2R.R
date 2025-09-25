@@ -3,6 +3,7 @@ require(tibble)
 require(stringr)
 require(ggplot2)
 require(DEqMS)
+require(vegan)
 
 #load ggplot theme and colours
 source("source/ggplot_parameters.R")
@@ -50,13 +51,6 @@ protein_abund<- read.table("data/SO289_clust99_RC_PeptideGroups.txt", sep ="\t",
   summarise_at(vars(samples_df$Sample_ID),sum, na.rm = TRUE) %>% 
   tibble::column_to_rownames("gene_callers_id")%>% 
   mutate(across(where(is.numeric), ~na_if(., 0)))
-
-
-#log2 transformation of protein abundances
-protein_abund.log2 <- log2(as.matrix(protein_abund))
-
-#median normalization of the data
-prot.dat.log2_norm = equalMedianNormalization(protein_abund.log2)
 
 ############################
 #Protein annotations
@@ -137,13 +131,35 @@ rm(protease_annotation_df, blastp_hits_df, CAZYme_annotation_df, interpro_annota
 #protein localization estimates
 ############################
 protein_localization <- read.table("data/SO289-detected_proteins_deeploc.txt", h=T, sep ="\t") %>% 
-  mutate(gene_callers_id = as.character(gene_callers_id)) %>% 
-  filter(gene_callers_id %in% row.names(prot.dat.log2_norm))
+  mutate(gene_callers_id = as.character(gene_callers_id))
 
 ############################
-#summarize number of proteins
+#Explore viral proteins in BEVs fraction
 ############################
-protein_abund_per_sample <- protein_abund %>%
+vir_gcids_taxa<- protein_taxonomy %>% 
+  filter(grepl("Viruses", Domain))%>% pull(gene_callers_id)
+
+vir_gcids_ann <-protein_annotations %>% 
+  filter(grepl("phage|virus|capsid|Tail sheath",Pfam_ann, ignore.case = TRUE)|
+           grepl("phage|virus|capsid|Tail sheath",InterPro_ann, ignore.case = TRUE)|
+           NCBIfam_acc %in% c("TIGR01554", "TIGR02126", "TIGR01543")) %>% pull(gene_callers_id)
+vir_gcids<- c(vir_gcids_taxa, vir_gcids_ann)
+
+#summarize how many viral proteins per sample
+viral_prot_per_sample <- protein_abund[vir_gcids,] %>%
+  reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
+  filter(Abund>0) %>% 
+  left_join(samples_df, by = "Sample_ID") %>% 
+  group_by(Region,Station_ID,Fraction) %>% 
+  summarize(N_prot=n()) %>% 
+  tidyr::spread(Fraction, N_prot)
+
+############################
+#summarize number of non viral proteins
+############################
+protein_abund_no_vir<-protein_abund[!row.names(protein_abund)%in%vir_gcids,]
+
+protein_abund_per_sample <- protein_abund_no_vir %>%
   reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
   filter(Abund>0) %>% 
   left_join(samples_df, by = "Sample_ID") %>% 
@@ -160,54 +176,12 @@ protein_abund_per_sample %>%
   theme(axis.text.x=element_text(angle=90))
 
 
+
 ############################
-#Check differences in protein composition between fraction
+#Transform abundances
 ############################
-prot.dat.MDS<- prot.dat.log2_norm
-prot.dat.MDS[is.na(prot.dat.MDS)]<- 0
-prot.dat.MDS<- prot.dat.MDS[!rowSums(prot.dat.MDS)==0,]
+#log2 transformation of protein abundances
+protein_abund.log2 <- log2(as.matrix(protein_abund_no_vir))
 
-# Running NMDS in vegan (metaMDS)
-prot_NMDS <-  metaMDS(t(prot.dat.MDS),
-                      distance = "euclidean",
-                      k = 2,
-                      maxit = 999, 
-                      trymax = 999,
-                      wascores = FALSE,
-                      autotransform = FALSE,
-                      tidy= "sites",
-                      na.rm = TRUE)
-
-# Perform K-means clustering with 4 clusters
-kmeans_result <- kmeans(t(prot.dat.MDS), centers=2, nstart = 25)
-
-#plot
-prot_NMDS.scores <- as.data.frame(scores(prot_NMDS)) %>% 
-  tibble::rownames_to_column(var ="Sample_ID") %>% 
-  left_join(samples_df, 
-            by = "Sample_ID", copy = TRUE) %>% 
-  mutate(Cluster=kmeans_result$cluster)
-
-prot_NMDS.scores %>% 
-  ggplot(aes(x=NMDS1, y=NMDS2, shape = Fraction, 
-             colour = as.factor(Cluster), label = Sample_ID))+
-  geom_point(size =5, colour = "black")+
-  geom_point(size =4)+
-  geom_text(nudge_y = -0.05, size =4)+
-  scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
-                                "#D55E00"))+
-  theme_bw()
-
-#test whether the differences between the runs are significant
-prot_distmat <- 
-  vegdist(t(prot.dat.MDS), method = "euclidean",na.rm = TRUE)
-
-df <- samples_df %>% 
-  select(Region,Fraction, Sample_ID) %>% 
-  mutate(Cluster=kmeans_result$cluster)
-
-adonis_all <- adonis2(prot_distmat ~ Fraction+Cluster, df,
-                      permutations=999)
-
-adonis_all
-
+#median normalization of the data
+prot.dat.log2_norm = equalMedianNormalization(protein_abund.log2)

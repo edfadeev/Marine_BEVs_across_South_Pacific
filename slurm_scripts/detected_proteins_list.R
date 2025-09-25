@@ -25,7 +25,7 @@ protein_metadata<- read.table("./11_PROTEIN/SO289_clust99_RC_PeptideGroups.txt",
          Unique.Peptides = case_when(grepl(";",Positions.in.Master.Proteins)~ 0, TRUE ~ 1)) %>% 
   group_by(gene_callers_id) %>% 
   summarize(Number.of.Peptides=n(), Number.of.PSMs=sum(Number.of.PSMs), Number.of.Unique.Peptide=sum(Unique.Peptides)) %>% 
-  filter(Number.of.Peptides>1, Number.of.Unique.Peptide> 0) # remove proteins with less than 2 peptides and without unique peptides 
+  filter(Number.of.Unique.Peptide> 0) # remove proteins with less than 2 peptides and without unique peptides 
 
 ############################
 #save gene callers IDs of the identified proteins for further annotation

@@ -122,7 +122,7 @@ DEqMS_results_Class_tax %>%
   mutate(Order=gsub("Candidatus |Candidatus","",Order),
           Taxa=case_when(Prop<1 ~"Other taxa < 1%", 
                         is.na(Order) | Order=="NA" |Order=="NA_uncl" | Order=="Unknown" ~"unclassified",
-                        TRUE~Order)) %>%  View()
+                        TRUE~Order)) %>% # View()
   mutate(Taxa = factor(Taxa, levels=c( "Caulobacterales", 
                                        "Hyphomicrobiales" , 
                                        "Hyphomonadales","Kordiimonadales", "Minwuiales","Parvularculales","Pelagibacterales" ,"Puniceispirillales",
@@ -195,7 +195,7 @@ TonBs_acc<- c("TIGR01352", #TonB family C-terminal domain
 
 #summarize number of TonB transporters
 DEqMS_results_TonB<- DEqMS_results%>% 
-  left_join(protein_annotations, by = "gene_callers_id", ) %>% 
+  left_join(protein_annotations, by = "gene_callers_id") %>% 
   left_join(protein_taxonomy, by = "gene_callers_id") %>% unique() %>% 
   mutate(TonB=case_when(NCBIfam_acc %in% SusCD_acc | Pfam_acc%in% SusCD_acc |
                         grepl("Sus", InterPro_ann, ignore.case =TRUE)|
