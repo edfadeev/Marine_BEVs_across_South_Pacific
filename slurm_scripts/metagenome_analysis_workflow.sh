@@ -188,11 +188,22 @@ awk 'BEGIN{FS=OFS="\t"};$3 > 25 && $5 < 0.001 && $6 > 50 {print $1, $2, $7, $8, 
 awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","blastp_ann","blastp_species","blastp_taxa"}; \
 {print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_blastp_refseq.txt
 
-#run blastp uniprot
-sbatch --array=1-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_uniprot.sh
+#run blastp uniref90
+sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_uniprot.sh
 
-sbatch --array=0-0 -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_uniprot.sh
+#merge output from all chuncks
+cat $WORKDIR/11_PROTEIN/temp_blastp/*_uniref90_blastp.out |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","pident","length","evalue","bitscore"}; \
+{print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_uniref90.out
 
+
+#run blastp on swiss-prot
+sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_sprot.sh
+
+#merge output from all chuncks
+cat $WORKDIR/11_PROTEIN/temp_blastp/*_uniprot_sprot_blastp.out |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","pident","length","evalue","bitscore"}; \
+{print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_uniprot_sprot_blastp.out
 
 ################################
 #Run dbcan (identify CAZymes)
