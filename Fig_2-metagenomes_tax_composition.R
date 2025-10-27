@@ -8,10 +8,9 @@ source("source/ggplot_parameters.R")
 samples_meta_df<- read.table("data/samples_meta.txt", sep ="\t", header = TRUE, row.names = 1) %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
-                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", 
-                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12",  "SO289_6", 
+                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
+                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
                                                     "SO289_3", "SO289_1"))) 
-#import kraken reports
 k_reports<- readRDS("./data/kraken_reports.rds")
 
 ##################################################
@@ -24,9 +23,10 @@ reports_overview<- summarize_reports(k_reports) %>%
 
 #merge taxonomy table
 merged_report<- merge_reports(k_reports)
+class(merged_report)<- "data.frame"
 
 merged_read_counts<- merged_report%>% 
-  select(Name,TaxRank, TaxLineage, contains("cladeReads")) %>% 
+  select(Name,TaxRank, TaxLineage, ends_with("cladeReads")) %>% 
   reshape2::melt() %>% 
   filter(!is.na(value)) %>% 
   mutate(Station_ID=gsub("\\.kreport.*","", variable)) %>% 
@@ -73,8 +73,8 @@ BAC_read_total<- merged_read_counts %>% select(Station_ID, bacterial_reads) %>% 
 BAC_class_proportion %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
-                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", 
-                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_6", 
+                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
+                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
                                                     "SO289_3", "SO289_1"))) %>% 
   select(Name, Region, Station_ID, Proportion) %>% 
   rbind(BAC_class_uncl) %>% 
@@ -86,7 +86,8 @@ BAC_class_proportion %>%
   #geom_text(aes(x=Station_ID, label=Total_reads), y=100)+
   theme_EF+
   theme(axis.line = element_blank(),
-        axis.text.x= element_blank(),
+        #axis.text.x= element_blank(),
+        axis.text.x= element_text(angle=90),
         axis.title.x= element_blank(),
         axis.ticks.x = element_blank(),
         legend.position = "bottom", 

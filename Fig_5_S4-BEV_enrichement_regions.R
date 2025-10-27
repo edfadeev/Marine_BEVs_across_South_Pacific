@@ -1,11 +1,11 @@
 require(dplyr)
+require(tidyr)
 require(vegan)
 require(stringr)
 require(DEqMS)
 
 #load ggplot theme and colours
 source("source/ggplot_parameters.R")
-source("source/PD_results2R.R")
 
 #calculate standard error
 se <- function(x, na.rm=FALSE) {
@@ -13,24 +13,34 @@ se <- function(x, na.rm=FALSE) {
   sqrt(var(x)/length(x))
 }
 
+#import normalized protein abundance table and metadata
+samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
+  mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
+         Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
+                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
+                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
+                                                    "SO289_3", "SO289_1"))) 
+
+prot.dat.log2_norm<- read.table("data/protein_abund_log2_norm.txt",  header = TRUE)
+
+protein_metadata<- read.table("data/protein_metadata.txt",  header = TRUE)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_annotations<- read.csv("data/protein_annotations.txt", sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
 
 ############################
 #Protein enrichment analysis between fractions in each region
 ############################
-#list all non-cytoplasmic proteins
-non_cyto_prot<- protein_localization %>% 
-  filter(deeploc %in% c("Outer Membrane","Extracellular", "Cell wall & surface")) %>% 
-  pull(gene_callers_id)
-
-non_cyto_prot<- non_cyto_prot[!non_cyto_prot %in% vir_gcids]
-  
 #carry out enrichment tests based on regions
-enrichment_tests_list <- lapply(c("UP","TRAN","GYRE","WEST"), function(x) {
+enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
   
   samples_meta_sub<- samples_df %>% 
-    mutate(Enr.group = factor(Region, levels =c("WEST","GYRE", "TRAN","UP"))) %>% 
+    mutate(Enr.group = factor(Region, levels =c("WEST","GYRE", "TRAN"))) %>% 
     filter(Enr.group ==x)
-  
   
   #prepare experiment design matrix
   cond <-factor(samples_meta_sub$Fraction,
@@ -43,7 +53,7 @@ enrichment_tests_list <- lapply(c("UP","TRAN","GYRE","WEST"), function(x) {
   EV_sample_IDs<- samples_meta_sub %>% filter(Fraction =="EVs") %>% pull(Sample_ID)
   Cell_sample_IDs<- samples_meta_sub %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
   
-  prot.dat.log2_norm.filter<- prot.dat.log2_norm[c(non_cyto_prot), c(EV_sample_IDs, Cell_sample_IDs)]
+  prot.dat.log2_norm.filter <- prot.dat.log2_norm[,c(EV_sample_IDs,Cell_sample_IDs)]
   
   # Filter proteins that were observed in at least two samples in each fraction
   prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[rowSums(!is.na(prot.dat.log2_norm.filter[, c(EV_sample_IDs)]))>1 &
@@ -79,24 +89,33 @@ DEqMS_results<- bind_rows(enrichment_tests_list) %>%
   filter(Enr.frac!="Not.enr")
 
 #total of different proteins
-DEqMS_results %>% 
+DEqMS_results %>%  
   select(Enr.frac, gene_callers_id) %>% unique() %>% 
   group_by(Enr.frac) %>% 
   summarize(Total_p = n())
 
 #total of different orders
-DEqMS_results %>% left_join(protein_taxonomy, by = "gene_callers_id") %>% 
-  select(Enr.frac, Order) %>% unique() %>% 
+DEqMS_results %>% select(Enr.frac, gene_callers_id) %>% unique() %>% 
+  left_join(protein_taxonomy, by = "gene_callers_id") %>% 
+  select(Enr.frac, Class, Order) %>% unique() %>% 
   group_by(Enr.frac) %>% 
-  summarize(Total_p = n())
+  summarize(Total_orders = n())
 
 #proteins per order
 DEqMS_results %>% 
   left_join(protein_taxonomy, by = "gene_callers_id") %>% 
-  select(Enr.frac, Phylum, Class, Order) %>% unique() %>% 
+  select(Enr.frac, Phylum, Class, Order, gene_callers_id) %>% unique() %>% 
   group_by(Enr.frac, Phylum, Class, Order) %>% 
-  summarize(N_p = n(gene_callers_id)) 
+  summarize(N_p = n()) %>% 
+  tidyr::spread(Enr.frac, N_p) %>% View()
 
+#proteins per order per region
+DEqMS_results %>% 
+  left_join(protein_taxonomy %>% unique(), by = "gene_callers_id") %>% 
+  select(Enr.group, Enr.frac, Phylum, Class, Order, gene_callers_id) %>% unique() %>% 
+  group_by(Enr.group, Enr.frac, Phylum, Class, Order) %>% 
+  summarize(N_p = n()) %>% 
+  tidyr::spread(Enr.frac, N_p) %>% View()
 
 #total of proteins epr region
 DEqMS_results_totals<- DEqMS_results %>% 
@@ -109,7 +128,7 @@ DEqMS_results_totals<- DEqMS_results %>%
 ############################
 #plot taxa of the enriched proteins
 DEqMS_results_Class_tax<- DEqMS_results %>% 
-  left_join(protein_taxonomy, by = "gene_callers_id") %>% 
+  left_join(protein_taxonomy , by = "gene_callers_id") %>% 
   group_by(Enr.group, Enr.frac, Class, Order) %>% 
   summarize(N_p = n()) 
 
@@ -122,20 +141,20 @@ DEqMS_results_Class_tax %>%
   mutate(Order=gsub("Candidatus |Candidatus","",Order),
           Taxa=case_when(Prop<1 ~"Other taxa < 1%", 
                         is.na(Order) | Order=="NA" |Order=="NA_uncl" | Order=="Unknown" ~"unclassified",
-                        TRUE~Order)) %>%  View()
+                        TRUE~Order)) %>%  
   mutate(Taxa = factor(Taxa, levels=c( "Caulobacterales", 
                                        "Hyphomicrobiales" , 
                                        "Hyphomonadales","Kordiimonadales", "Minwuiales","Parvularculales","Pelagibacterales" ,"Puniceispirillales",
                                        "Rhodobacterales" , "Rhodospirillales" , "Sphingomonadales" , "Alphaproteobacteria_uncl", "Burkholderiales", 
                                        "Chitinophagales", "Cytophagales" , "Synechococcales", "Flavobacteriales" ,
-                                       "Alteromonadales" , "Cellvibrionales" , "Chromatiales", "Kangiellales", "Lysobacterales" ,
+                                       "Alteromonadales" , "Cellvibrionales" , "Chromatiales", "Kangiellales", "Lysobacterales" ,"Moraxellales",
                                        "Oceanospirillales" , "Pseudomonadales" , "Sphingobacteriales", "Gammaproteobacteria_uncl", 
                                        "Other taxa < 1%", "Viral", "unclassified")),
          Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN","UP")),
          Enr.frac=ifelse(Enr.frac=="EVs","BEVs",Enr.frac)) %>%  
   ggplot(aes(x=Enr.frac, y= Prop, fill = Taxa))+
   geom_col()+
-  scale_fill_manual(values = taxa_shades)+
+  scale_fill_manual(values = tol21rainbow)+
   facet_grid(cols=vars(Enr.group),scales="free_x",space="free_x",switch="x") +
   theme_EF+
   theme(legend.position = "bottom")
@@ -149,6 +168,222 @@ ggsave("./Figures/prot_enr_Tax_regions.pdf",
        scale = 2,
        dpi = 300)
 
+
+############################
+# Explore enriched proteins of Cyanobacteria
+############################
+DEqMS.results_cyno<- DEqMS_results %>% 
+  left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
+  filter(grepl("Synechococcales", Order)) %>% 
+  left_join(protein_metadata, by ="gene_callers_id")
+
+DEqMS.results_cyno %>% 
+  mutate(InterPro_ann= gsub("\\|.*","",InterPro_ann)) %>% 
+  group_by(Enr.frac, InterPro_ann) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
+         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
+  filter(EVs>Cells) %>% 
+  View()
+
+DEqMS.results_cyno %>% 
+  group_by(Enr.frac, Enr.group) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p)
+
+DEqMS.results_cyno.p<- DEqMS.results_cyno %>% 
+  filter(grepl("Ferritin|Flavodoxin|Peroxiredoxin|Superoxide|oxidoreductase", InterPro_ann, ignore.case = TRUE)) %>% 
+  mutate(InterPro_ann=case_when(grepl("Ferritin", InterPro_ann)~"Ferritins",
+                                grepl("Flavodoxin", InterPro_ann)~"Flavodoxins",
+                                grepl("Peroxiredoxin", InterPro_ann)~"Peroxiredoxins",
+                                grepl("Superoxide", InterPro_ann)~"Superoxide dismutase",
+                                grepl("oxidoreductase", InterPro_ann, ignore.case = TRUE)~"Oxidoreductase"),
+         Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN"))) %>% 
+  group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
+  summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
+
+DEqMS.results_cyno.totals<- DEqMS.results_cyno %>% 
+  group_by(Enr.group, Enr.frac) %>% 
+  summarize(Total=n())
+  
+  
+DEqMS.results_cyno.p %>% 
+  ggplot(aes(y=log2fold_mean , x=Enr.group, colour = InterPro_ann, label = count))+ 
+  geom_text(size = 5, position = position_dodge(width = 0.5))+
+  geom_point(size = 5, position = position_dodge(width = 1))+
+  scale_size_continuous(range = c(1, 20))+
+  geom_errorbar(aes(ymin = log2fold_mean-log2fold_se, ymax = log2fold_mean +log2fold_se), 
+                width = 0.2, position = position_dodge(width = 1)) + 
+  ylab("log2 foldchange")+
+  scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
+                                "#D55E00","#E32356"))+
+  geom_hline(aes(yintercept=0), linetype="dashed")+
+  theme_EF+
+  theme(legend.position = "bottom",
+        axis.text.x=element_text(angle=90))
+
+
+#save the plot
+ggsave("./Figures/cyano_oxids_regions.pdf",
+       plot = last_plot(),
+       units = "mm",
+       width = 180,
+       height = 90, 
+       scale = 2,
+       dpi = 300)
+
+
+
+
+############################
+# Explore enriched proteins of SAR11
+############################
+DEqMS.results_SAR11<- DEqMS_results %>% 
+  left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
+  filter(grepl("Pelagibacterales", Order)) %>% 
+  left_join(protein_metadata, by ="gene_callers_id")
+
+
+
+DEqMS.results_SAR11 %>% filter(grepl("Periplasmic binding", SUPERFAMILY_ann)) %>% 
+  select(Enr.frac, gene_callers_id, PANTHER_ann) %>% unique() %>% 
+  group_by(Enr.frac) %>% 
+  summarize(p=n())
+
+DEqMS.results_SAR11 %>% filter(grepl("Periplasmic binding", SUPERFAMILY_ann)) %>% 
+  select(Enr.frac, gene_callers_id, PANTHER_ann) %>% unique() %>% 
+  group_by(Enr.frac, PANTHER_ann) %>% 
+  summarize(p=n()) %>% View()
+
+DEqMS.results_SAR11 %>% filter(grepl("Periplasmic binding", SUPERFAMILY_ann)) %>% 
+  select(Enr.frac, Enr.group,gene_callers_id, PANTHER_ann) %>% unique() %>% 
+  group_by(Enr.frac, Enr.group, PANTHER_ann) %>% 
+  summarize(p=n()) %>% View()
+
+
+DEqMS.results_SAR11 %>% 
+  group_by(Enr.frac, Enr.group) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p)
+
+
+
+#SusCD proteins
+SusCD_acc <- c("PF14322", "PF12771", "PF07980", "PF12741",
+               "TIGR04056", "TIGR04057", "TIGR04056|TIGR04057", "TIGR04057|TIGR04056")
+
+DEqMS.results_Flavobacteriales<- DEqMS_results %>% filter(Enr.frac!="Not.enr") %>% 
+  left_join(protein_taxonomy%>% unique(), by = "gene_callers_id") %>% 
+  filter(Order =="Flavobacteriales")  %>% 
+  left_join(protein_metadata%>% unique(), by ="gene_callers_id") %>%
+  left_join(protein_swissprot%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_uniref%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_localization%>% unique(),  by="gene_callers_id") %>% 
+  left_join(protein_annotations %>% unique(), by = "gene_callers_id") %>% 
+  mutate(Sus=case_when(grepl("Susd", Pfam_ann, ignore.case =TRUE)|
+                         grepl("SusD", InterPro_ann, ignore.case =TRUE)|
+                         grepl("SusD", blastp_ann, ignore.case =TRUE)|
+                         grepl("Q8A1G2", blastp_acc.x) ~"SusD",
+                       NCBIfam_acc %in% SusCD_acc |grepl("SusC", InterPro_ann, ignore.case =TRUE)|
+                         grepl("SUSC", PANTHER_ann, ignore.case =TRUE)|
+                         grepl("SusC", blastp_ann, ignore.case =TRUE)|
+                         grepl("T2KPJ3|T2KMI3|T2KM18|Q8A1G1", blastp_acc.x)~"SusC"))
+
+
+DEqMS.results_Flavobacteriales %>% filter(!is.na(Sus)) %>% 
+  select(Enr.frac, Sus, gene_callers_id) %>% unique() %>%  
+  group_by(Enr.frac, Sus) %>% 
+  summarize(p=n()) %>% 
+spread(Enr.frac, p)
+
+DEqMS.results_Flavobacteriales %>% filter(!is.na(Sus)) %>% 
+  select(Enr.frac, Sus, gene_callers_id) %>% unique() %>%  
+  group_by(Enr.frac, Sus) %>% 
+  summarize(p=n()) %>% View()
+
+
+DEqMS.results_Flavobacteriales %>% filter(!is.na(Sus)) %>% 
+  group_by(Enr.frac, Enr.group, Sus) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p)
+
+DEqMS.results_Flavobacteriales %>% 
+  group_by(Enr.frac, Enr.group, Sus) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p)
+
+
+DEqMS.results_TonB<- DEqMS_results %>% filter(Enr.frac!="Not.enr") %>% 
+  left_join(protein_taxonomy%>% unique(), by = "gene_callers_id") %>% 
+  #filter(Class== "Gammaproteobacteria")  %>% 
+  left_join(protein_metadata%>% unique(), by ="gene_callers_id") %>%
+  left_join(protein_swissprot%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_uniref%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_localization%>% unique(),  by="gene_callers_id") %>% 
+  left_join(protein_annotations %>% unique(), by = "gene_callers_id") %>% 
+  mutate(TonB=case_when(grepl("Susd", Pfam_ann, ignore.case =TRUE)|
+                        grepl("SusD", InterPro_ann, ignore.case =TRUE)|
+                        grepl("SusD", blastp_ann, ignore.case =TRUE)|
+                        grepl("Q8A1G2", blastp_acc.x)|
+                        NCBIfam_acc %in% SusCD_acc |grepl("SusC", InterPro_ann, ignore.case =TRUE)|
+                        grepl("SUSC", PANTHER_ann, ignore.case =TRUE)|
+                        grepl("SusC", blastp_ann, ignore.case =TRUE)|
+                        grepl("T2KPJ3|T2KMI3|T2KM18|Q8A1G1", blastp_acc.x)|
+                        NCBIfam_acc %in% TonBs_acc |
+                        TIGRFAM_acc %in% TonBs_acc |
+                        grepl("TonB", InterPro_ann)| 
+                        grepl("TonB", ProSitePatterns_ann)|
+                        grepl("TONB", PANTHER_ann)|
+                        grepl("TONB", blastp_ann)~ "TonB-dependent transport systems")) 
+
+
+
+
+DEqMS.results_TonB %>% 
+  select(Enr.frac, Enr.group, gene_callers_id, TonB) %>% unique() %>% 
+  group_by(Enr.frac, Enr.group, TonB) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Prop_Cells=Cells/sum(Cells, na.rm = TRUE),
+         Prop_EVs=EVs/sum(EVs, na.rm = TRUE)) 
+
+
+
+
+
+
+DEqMS.results_Alteromonas %>% 
+  group_by(Enr.frac, deeploc) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Prop_Cells=Cells/sum(Cells, na.rm = TRUE),
+         Prop_EVs=EVs/sum(EVs, na.rm = TRUE)) 
+
+DEqMS.results_Rhodobacterales<- DEqMS_results %>% filter(Enr.frac!="Not.enr") %>% 
+  left_join(protein_taxonomy%>% unique(), by = "gene_callers_id") %>% 
+  filter(Order =="Rhodobacterales")  %>% 
+  left_join(protein_metadata%>% unique(), by ="gene_callers_id") %>%
+  left_join(protein_swissprot%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_uniref%>% unique(), by ="gene_callers_id") %>% 
+  left_join(protein_localization%>% unique(),  by="gene_callers_id") %>% 
+  left_join(protein_annotations %>% unique(), by = "gene_callers_id") 
+
+
+DEqMS.results_Rhodobacterales %>% 
+  filter(is.na(InterPro_ann)) %>% #View()
+  select(Enr.frac, Enr.group, gene_callers_id) %>% unique() %>% 
+  group_by(Enr.group, Enr.frac) %>% 
+  summarize(p=n())
+
+DEqMS.results_Rhodobacterales %>% 
+  group_by(Enr.frac, deeploc) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Prop_Cells=Cells/sum(Cells, na.rm = TRUE),
+         Prop_EVs=EVs/sum(EVs, na.rm = TRUE)) 
 
 ############################
 #iron related porins in cyanobacteria
@@ -190,14 +425,15 @@ TonBs_acc<- c("TIGR01352", #TonB family C-terminal domain
               "TIGR01782", #polysaccharide
               "TIGR01783",#siderophore
               "TIGR01785",# haem and haemoglobin
-              "TIGR01786" #haem and haemoglobin
+              "TIGR01786", #haem and haemoglobin
+              "PTHR32552", "PTHR30442", "PTHR30069"
 )
 
 #summarize number of TonB transporters
 DEqMS_results_TonB<- DEqMS_results%>% 
   left_join(protein_annotations, by = "gene_callers_id", ) %>% 
   left_join(protein_taxonomy, by = "gene_callers_id") %>% unique() %>% 
-  mutate(TonB=case_when(NCBIfam_acc %in% SusCD_acc | Pfam_acc%in% SusCD_acc |
+  mutate(TonB=case_when(NCBIfam_acc %in% SusCD_acc | Pfam_acc%in% SusCD_acc |PANTHER_acc %in% TonBs_acc|
                         grepl("Sus", InterPro_ann, ignore.case =TRUE)|
                           grepl("Sus", blastp_ann, ignore.case =TRUE) ~"SusCD transport system",
                           NCBIfam_acc %in% TonBs_acc |

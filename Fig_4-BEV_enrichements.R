@@ -5,7 +5,6 @@ require(DEqMS)
 
 #load ggplot theme and colours
 source("source/ggplot_parameters.R")
-source("source/PD_results2R.R")
 
 #calculate standard error
 se <- function(x, na.rm=FALSE) {
@@ -13,75 +12,17 @@ se <- function(x, na.rm=FALSE) {
   sqrt(var(x)/length(x))
 }
 
+#import normalized protein abundance table and metadata
+samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
+  mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
+         Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
+                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
+                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
+                                                    "SO289_3", "SO289_1"))) 
 
-############################
-#Explore viral proteins in BEVs fraction
-############################
-vir_gcids_taxa<- protein_taxonomy %>% 
-  filter(grepl("Viruses", Domain))%>% pull(gene_callers_id)
+prot.dat.log2_norm<- read.table("data/protein_abund_log2_norm.txt",  header = TRUE)
 
-vir_gcids_ann <-protein_annotations %>% 
-                  filter(grepl("phage|virus|capsid|Tail sheath",Pfam_ann, ignore.case = TRUE)|
-                                               grepl("phage|virus|capsid|Tail sheath",InterPro_ann, ignore.case = TRUE)|
-                                               NCBIfam_acc %in% c("TIGR01554", "TIGR02126", "TIGR01543")) %>% pull(gene_callers_id)
-vir_gcids<- c(vir_gcids_taxa, vir_gcids_ann)
-
-#summarize how many viral proteins per sample
-viral_prot_per_sample <- protein_abund[vir_gcids,] %>%
-  reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
-  filter(Abund>0) %>% 
-  left_join(samples_df, by = "Sample_ID") %>% 
-  group_by(Region,Station_ID,Fraction) %>% 
-  summarize(N_prot=n()) %>% 
-  tidyr::spread(Fraction, N_prot)
-
-############################
-#Protein overlap between fractions
-############################
-prot_overlap_ls <- lapply(paste0(samples_df$Station_ID,"_"), function(s){
-  st<- protein_abund %>% rownames_to_column("gene_callers_id") %>% 
-    dplyr::select(gene_callers_id, starts_with(match=s)) %>% 
-    reshape2::melt(value.name = "Abund") %>% 
-    mutate(Fraction = case_when(grepl("Cells", variable)~ "Cells", grepl("EVs", variable)~ "EVs")) %>% 
-    filter(Abund>0)
-  
-  overlap <- VennDiagram::calculate.overlap(list("Cells"= st %>% filter(Fraction =="Cells") %>% dplyr::select(gene_callers_id) %>%  pull(), 
-                                                 "EVs"=st %>% filter(Fraction =="EVs") %>% dplyr::select(gene_callers_id) %>%  pull()))
-  
-  return(data.frame(Station_ID = s, 
-                    Cells_prot = length(overlap$a1),
-                    EVs_prot = length(overlap$a2),
-                    Shared_prot = length(overlap$a3)))
-})
-
-prot_overlap<- bind_rows(prot_overlap_ls) %>% 
-  mutate(EVs_shared_prop = round(Shared_prot/EVs_prot,2)) %>% unique()
-
-
-prot_overlap %>% 
-  filter(Shared_prot>0) %>% 
-  summarize(Min=min(EVs_shared_prop),
-            Max=max(EVs_shared_prop),
-            Mean = mean(EVs_shared_prop),
-            SE = se(EVs_shared_prop))
-
-############################
-#dissimilarity of Cells vs. BEV proteomes
-############################
-#replace NAs with 0 for dissimilarity calculation
-prot.dat.MDS<- prot.dat.log2_norm
-
-prot.dat.MDS[is.na(prot.dat.MDS)]<- 0
-prot.dat.MDS<- prot.dat.MDS[!rowSums(prot.dat.MDS)==0,] # remove proteins that were not observed in any cellular sample
-
-
-#test whether the differences between the runs are significant
-protein_dist_matrix <- vegdist(t(prot.dat.MDS), method = "euclidean",na.rm = TRUE)
-
-adonis2(protein_dist_matrix ~ Fraction, samples_df,permutations=999)
-
-
-
+protein_metadata<- read.table("data/protein_metadata.txt",  header = TRUE)
 
 ############################
 #Protein enrichment analysis between fractions
@@ -97,13 +38,9 @@ contrast <-  makeContrasts(contrasts="EVs-Cells",levels=design)
 EV_sample_IDs<- samples_df %>% filter(Fraction =="EVs") %>% pull(Sample_ID)
 Cell_sample_IDs<- samples_df %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
 
-prot.dat.log2_norm_no_vir<- prot.dat.log2_norm[!row.names(prot.dat.log2_norm) %in% vir_gcids,] #remove viral proteins
-
-prot.dat.log2_norm.filter<- prot.dat.log2_norm_no_vir[, c(EV_sample_IDs, Cell_sample_IDs)]
-
 # Filter proteins that were observed in at least two samples in each fraction
-prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[rowSums(!is.na(prot.dat.log2_norm.filter[, c(EV_sample_IDs)]))>1 &
-                                                         rowSums(!is.na(prot.dat.log2_norm.filter[, c(Cell_sample_IDs)]))>1,]
+prot.dat.log2_norm.filter <- prot.dat.log2_norm[rowSums(!is.na(prot.dat.log2_norm[, c(EV_sample_IDs)]))>1 &
+                                                         rowSums(!is.na(prot.dat.log2_norm[, c(Cell_sample_IDs)]))>1,]
 
 #run linear model
 fit1<- lmFit(prot.dat.log2_norm.filter, design)
@@ -133,7 +70,7 @@ DEqMS.results %>%
 ############################
 #plot localization of the enriched proteins
 DEqMS_results_loc<- DEqMS.results %>% 
-  left_join(protein_localization,  by="gene_callers_id") %>% 
+  left_join(protein_annotations,  by="gene_callers_id") %>% 
   mutate(deeploc=case_when(deeploc=="Cell wall & surface"~"Extracellular", TRUE~ deeploc)) %>% 
   group_by(Enr.frac, deeploc) %>% 
   summarize(N_p = n()) 
@@ -142,7 +79,6 @@ DEqMS_results_loc_totals<- DEqMS_results_loc %>%
   group_by(Enr.frac) %>% summarize(Total_p = sum(N_p)) 
 
 DEqMS_results_loc %>% filter(Enr.frac!="Not.enr") %>% 
-  #mutate(PSORTb_ann =ifelse(is.na(PSORTb_ann),"Unknown", PSORTb_ann)) %>% 
   left_join(DEqMS_results_loc_totals, by = c("Enr.frac")) %>% 
   mutate(Prop=100*N_p/Total_p,
          Enr.frac=ifelse(Enr.frac=="EVs","BEVs",Enr.frac),
@@ -179,6 +115,8 @@ DEqMS_results_Class_tax<- DEqMS.results %>%
   group_by(Enr.frac, Phylum, Class, Order) %>% 
   summarize(N_p = n()) 
 
+DEqMS_results_Class_tax %>% filter(Enr.frac!="Not.enr") %>% tidyr::spread(Enr.frac, N_p) %>% View()
+
 DEqMS_results_Class_totals<- DEqMS_results_Class_tax %>% 
   group_by(Enr.frac) %>% summarize(Total_p = sum(N_p)) 
 
@@ -189,7 +127,7 @@ DEqMS_results_Class_tax %>% filter(Enr.frac!="Not.enr") %>%
                         is.na(Order) | Order=="NA" | Order=="NA_uncl" |Order=="Unknown" ~"unclassified",
                         grepl("Pelagibacterales", Order)~"Pelagibacterales",
                         Order=="Candidatus Puniceispirillales"~"Puniceispirillales",
-                        TRUE~Order)) %>% 
+                        TRUE~Order)) %>%
   mutate(Taxa = factor(Taxa, levels=c( "Hyphomicrobiales" , "Minwuiales","Parvularculales","Pelagibacterales" ,"Puniceispirillales",
                                        "Rhodobacterales" , "Rhodospirillales" , "Sphingomonadales" , "Alphaproteobacteria_uncl", "Burkholderiales", 
                                        "Cytophagales" , "Synechococcales", "Flavobacteriales" ,
@@ -200,7 +138,7 @@ DEqMS_results_Class_tax %>% filter(Enr.frac!="Not.enr") %>%
   ggplot(aes(x=Enr.frac, y= Prop, fill = Taxa))+
   geom_col()+
   #geom_text(aes(label=Total_p), y=101, vjust=0.1, size = 5)+
-  scale_fill_manual(values = c(taxa_shades))+
+  scale_fill_manual(values = c(tol21rainbow))+
   ylab("Proportion of enriched proteins (%)")+
   theme_EF+
   guides(fill = guide_legend(nrow = 6))+
@@ -221,14 +159,15 @@ ggsave("./Figures/prot_enr_taxa.pdf",
 ############################
 #export results for excel 
 DEqMS.results %>% filter(Enr.frac!="Not.enr") %>% 
-  left_join(protein_annotations %>% select(gene_callers_id,InterPro_acc,InterPro_ann,NCBIfam_acc,NCBIfam_ann,Pfam_acc,Pfam_ann), by = "gene_callers_id", relationship = "many-to-many") %>% unique() %>% 
+  left_join(protein_annotations, by = "gene_callers_id", relationship = "many-to-many") %>% unique() %>% 
   left_join(protein_taxonomy, by = "gene_callers_id") %>% 
-  left_join(protein_localization,  by="gene_callers_id") %>% 
   select(Enr.frac, logFC, sca.adj.pval, starts_with("InterPro_"), starts_with("NCBIfam_"),
-         starts_with("Pfam_"), deeploc, Domain, Phylum, Class,Order,Family,Genus) %>% View()
+         starts_with("Pfam_"), Domain, Phylum, Class,Order,Family,Genus) %>% 
   openxlsx::write.xlsx(., colNames = TRUE, 
                        file= 'Tables/Table_S3-DEqMS_results_Fractions.xlsx')
 
+  
+  
 #print session info and clean the workspace
 sessionInfo()
 rm(list = ls())
