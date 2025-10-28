@@ -172,21 +172,108 @@ ggsave("./Figures/prot_enr_Tax_regions.pdf",
 ############################
 # Explore enriched proteins of Cyanobacteria
 ############################
-DEqMS.results_cyno<- DEqMS_results %>% 
+DEqMS.results_cyano<- DEqMS_results %>% 
   left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>% 
   left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
   filter(grepl("Synechococcales", Order)) %>% 
   left_join(protein_metadata, by ="gene_callers_id")
 
-DEqMS.results_cyno %>% 
-  mutate(InterPro_ann= gsub("\\|.*","",InterPro_ann)) %>% 
+
+DEqMS.results_cyano %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% View()
   group_by(Enr.frac, InterPro_ann) %>% 
   summarize(p=n()) %>% 
   spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
          EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
-  filter(EVs>Cells) %>% 
+  #filter(EVs>Cells) %>% 
   View()
+
+
+#characterize the porins
+DEqMS.results_cyano_Porins<- DEqMS.results_cyano %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  filter(grepl("Porin",InterPro_ann, ignore.case = TRUE))
+
+DEqMS.results_cyano_Porins_seqs<- DEqMS.results_cyano_Porins%>% 
+  select(gene_callers_id, aa_sequence) %>% unique() %>% 
+  mutate(gene_callers_id=paste0("gcid_",gene_callers_id))
+
+seqinr::write.fasta(as.list(DEqMS.results_cyano_Porins_seqs$aa_sequence), names=DEqMS.results_cyano_Porins_seqs$gene_callers_id, 
+                    as.string=FALSE, file.out="data/Cyano_porins.fa")
+
+
+#transfer the files to LISC and run psiblast against TCDB
+# module load ncbiblast
+# makeblastdb -in $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B.fasta -out $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B -dbtype prot
+# psiblast -db $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B -query $WORKDIR/11_PROTEIN/TCDB_class/Cyano_porins.fa -outfmt "6 qseqid sseqid pident length evalue bitscore" -out Cyano_porins_psiblastp.out -num_threads 4
+# grep ">" TCDB_1_B.fasta | sed 's/>//g' - | sed 's/ /'$'\t''/' - | sed 's/ /'$'\t''/' - > TCDB_1_B.ann
+
+
+
+#import psiblast results
+blastp.out<- read.table("data/Cyano_porins_psiblastp.out", col.names =c("gene_callers_id","sseqid","pident","length","evalue","bitscore")) %>% 
+  filter(pident>30  & evalue<0.001 & bitscore >50 ) %>% 
+  mutate(gene_callers_id=gsub("gcid_","", gene_callers_id))
+TCDB_annotation<- read.table("data/TCDB_1_B.ann", h=F, sep="\t")
+names(TCDB_annotation)<- c("sseqid", "TCID", "Annotation")
+
+#best hit by identitiy
+Cyano_porin_ann<- blastp.out %>% 
+  left_join(TCDB_annotation, by ="sseqid") %>%
+  group_by(gene_callers_id) %>% 
+  slice_max(pident, n = 1) 
+
+#merge annotation
+DEqMS.results_cyano_Porins<- DEqMS.results_cyano_Porins %>% 
+  left_join(Cyano_porin_ann, by = "gene_callers_id") %>% 
+  mutate(InterPro_ann=paste(TCID,Annotation, sep="_")) %>%
+  mutate(InterPro_ann=case_when(InterPro_ann=="NA_NA"~"Unknown porin", TRUE~InterPro_ann)) %>% 
+  select(-c("sseqid","pident","length","evalue","bitscore", "TCID", "Annotation"))
+
+#merge and summarize
+DEqMS.results_cyano_total_by_frac<- DEqMS.results_cyano %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
+  rbind(DEqMS.results_cyano_Porins) %>% 
+  group_by(Enr.frac, InterPro_ann) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
+         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) 
+  
+#plot results
+DEqMS.results_cyno.p<- DEqMS.results_cyano %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
+  rbind(DEqMS.results_cyano_Porins) %>% 
+  filter(InterPro_ann %in% c(DEqMS.results_cyano_total_by_frac %>% filter(EVs>Cells & EVs>4) %>% pull(InterPro_ann) )) %>% group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
+  summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
+
+
+DEqMS.results_cyno.p %>% 
+  ggplot(aes(y=log2fold_mean , x=InterPro_ann, colour = Enr.group, label = count))+ 
+  geom_text(size = 5, position = position_dodge(width = 0.5))+
+  geom_point(size = 5, position = position_dodge(width = 1))+
+  scale_size_continuous(range = c(1, 20))+
+  geom_errorbar(aes(ymin = log2fold_mean-log2fold_se, ymax = log2fold_mean +log2fold_se), 
+                width = 0.2, position = position_dodge(width = 1)) + 
+  ylab("log2 foldchange")+
+  scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
+                                "#D55E00","#E32356"))+
+  scale_x_discrete(label = function(x) stringr::str_trunc(x, 30)) +
+  facet_grid(.~Enr.group)+
+  geom_hline(aes(yintercept=0), linetype="dashed")+
+  theme_EF+
+  theme(legend.position = "bottom",
+        axis.text.x=element_text(angle=90))
+
+
+
 
 DEqMS.results_cyno %>% 
   group_by(Enr.frac, Enr.group) %>% 
@@ -209,20 +296,7 @@ DEqMS.results_cyno.totals<- DEqMS.results_cyno %>%
   summarize(Total=n())
   
   
-DEqMS.results_cyno.p %>% 
-  ggplot(aes(y=log2fold_mean , x=Enr.group, colour = InterPro_ann, label = count))+ 
-  geom_text(size = 5, position = position_dodge(width = 0.5))+
-  geom_point(size = 5, position = position_dodge(width = 1))+
-  scale_size_continuous(range = c(1, 20))+
-  geom_errorbar(aes(ymin = log2fold_mean-log2fold_se, ymax = log2fold_mean +log2fold_se), 
-                width = 0.2, position = position_dodge(width = 1)) + 
-  ylab("log2 foldchange")+
-  scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
-                                "#D55E00","#E32356"))+
-  geom_hline(aes(yintercept=0), linetype="dashed")+
-  theme_EF+
-  theme(legend.position = "bottom",
-        axis.text.x=element_text(angle=90))
+
 
 
 #save the plot
