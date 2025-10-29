@@ -208,9 +208,8 @@ seqinr::write.fasta(as.list(DEqMS.results_cyano_Porins_seqs$aa_sequence), names=
 #transfer the files to LISC and run psiblast against TCDB
 # module load ncbiblast
 # makeblastdb -in $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B.fasta -out $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B -dbtype prot
-# psiblast -db $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B -query $WORKDIR/11_PROTEIN/TCDB_class/Cyano_porins.fa -outfmt "6 qseqid sseqid pident length evalue bitscore" -out Cyano_porins_psiblastp.out -num_threads 4
 # grep ">" TCDB_1_B.fasta | sed 's/>//g' - | sed 's/ /'$'\t''/' - | sed 's/ /'$'\t''/' - > TCDB_1_B.ann
-
+# psiblast -db $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1_B -query $WORKDIR/11_PROTEIN/TCDB_class/Cyano_porins.fa -outfmt "6 qseqid sseqid pident length evalue bitscore" -out Cyano_porins_psiblastp.out -num_threads 4
 
 
 #import psiblast results
@@ -230,7 +229,7 @@ Cyano_porin_ann<- blastp.out %>%
 DEqMS.results_cyano_Porins<- DEqMS.results_cyano_Porins %>% 
   left_join(Cyano_porin_ann, by = "gene_callers_id") %>% 
   mutate(InterPro_ann=paste(TCID,Annotation, sep="_")) %>%
-  mutate(InterPro_ann=case_when(InterPro_ann=="NA_NA"~"Unknown porin", TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="NA_NA"~"Unclassified porin", TRUE~InterPro_ann)) %>% 
   select(-c("sseqid","pident","length","evalue","bitscore", "TCID", "Annotation"))
 
 #merge and summarize
@@ -247,60 +246,46 @@ DEqMS.results_cyano_total_by_frac<- DEqMS.results_cyano %>%
   
 #plot results
 DEqMS.results_cyno.p<- DEqMS.results_cyano %>% 
-  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="-"~Pfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
   mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
   filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_cyano_Porins) %>% 
-  filter(InterPro_ann %in% c(DEqMS.results_cyano_total_by_frac %>% filter(EVs>Cells & EVs>4) %>% pull(InterPro_ann) )) %>% group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
-  summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
-
-
-DEqMS.results_cyno.p %>% 
-  ggplot(aes(y=log2fold_mean , x=InterPro_ann, colour = Enr.group, label = count))+ 
-  geom_text(size = 5, position = position_dodge(width = 0.5))+
-  geom_point(size = 5, position = position_dodge(width = 1))+
-  scale_size_continuous(range = c(1, 20))+
-  geom_errorbar(aes(ymin = log2fold_mean-log2fold_se, ymax = log2fold_mean +log2fold_se), 
-                width = 0.2, position = position_dodge(width = 1)) + 
-  ylab("log2 foldchange")+
-  scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
-                                "#D55E00","#E32356"))+
-  scale_x_discrete(label = function(x) stringr::str_trunc(x, 30)) +
-  facet_grid(.~Enr.group)+
-  geom_hline(aes(yintercept=0), linetype="dashed")+
-  theme_EF+
-  theme(legend.position = "bottom",
-        axis.text.x=element_text(angle=90))
-
-
-
-
-DEqMS.results_cyno %>% 
-  group_by(Enr.frac, Enr.group) %>% 
-  summarize(p=n()) %>% 
-  spread(Enr.frac, p)
-
-DEqMS.results_cyno.p<- DEqMS.results_cyno %>% 
-  filter(grepl("Ferritin|Flavodoxin|Peroxiredoxin|Superoxide|oxidoreductase", InterPro_ann, ignore.case = TRUE)) %>% 
-  mutate(InterPro_ann=case_when(grepl("Ferritin", InterPro_ann)~"Ferritins",
-                                grepl("Flavodoxin", InterPro_ann)~"Flavodoxins",
-                                grepl("Peroxiredoxin", InterPro_ann)~"Peroxiredoxins",
-                                grepl("Superoxide", InterPro_ann)~"Superoxide dismutase",
-                                grepl("oxidoreductase", InterPro_ann, ignore.case = TRUE)~"Oxidoreductase"),
-         Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN"))) %>% 
+  #filter(InterPro_ann %in% c(DEqMS.results_cyano_total_by_frac %>% filter(EVs>Cells & EVs>4) %>% pull(InterPro_ann) )) %>% 
   group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
   summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
 
-DEqMS.results_cyno.totals<- DEqMS.results_cyno %>% 
-  group_by(Enr.group, Enr.frac) %>% 
-  summarize(Total=n())
-  
-  
+total_cyano_prot<- DEqMS.results_cyno.p %>% group_by(Enr.frac,Enr.group) %>% summarize(Total_p=sum(count))
 
-
-
+DEqMS.results_cyno.p %>%
+  filter(InterPro_ann %in% c(DEqMS.results_cyno.p %>% 
+                               filter(count>2 & Enr.frac=="EVs") %>% 
+                               pull(InterPro_ann))) %>% 
+  mutate(Function=case_when(InterPro_ann=="1.B.23.1.2_Hypothetical protein slr0042 - Synechocystis sp. (strain PCC 6803)." ~"Iron uptake porin",
+                            InterPro_ann=="1.B.23.1.9_Carbohydrate-selective porin OprB OS=Fischerella sp. JSC-11 GN=FJSC11DRAFT_0273 PE=4 SV=1" ~"Carbohydrate-selective porin",
+                            InterPro_ann=="1.B.23.1.1_SOMA - Synechococcus sp. (strain PCC 6301) (Anacystis nidulans)."~ "SomA porin",
+                            InterPro_ann=="Flavodoxin/nitric oxide synthase" ~ "Flavoprotein",
+                            InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
+                            InterPro_ann=="Ferritin/DPS protein domain"~"Ferredoxin", TRUE~ InterPro_ann)) %>% 
+  filter(!grepl("hypothetical", Function)) %>% 
+  left_join(total_cyano_prot, by =c("Enr.frac", "Enr.group")) %>% 
+  mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
+         Prop=count/Total_p) %>% 
+  ggplot(aes(y=Function , x=log2fold_mean, fill = Enr.group, label = count))+ 
+  geom_point(aes(size = Prop), shape =21)+
+  geom_text(size = 5, nudge_y = -0.2)+
+  geom_errorbar(aes(xmin = log2fold_mean-log2fold_se, xmax = log2fold_mean +log2fold_se), 
+                width = 0.2) + 
+  xlim(-10,10)+
+  facet_grid(~Enr.group)+  
+  geom_vline(aes(xintercept=0), linetype="dashed")+
+  scale_size_continuous(range = c(1, 20))+
+  theme_EF+
+  theme(legend.position = "bottom",
+        axis.text.x=element_text(angle=90))
+      
+          
 #save the plot
-ggsave("./Figures/cyano_oxids_regions.pdf",
+ggsave("./Figures/cyano_proteins_regions.pdf",
        plot = last_plot(),
        units = "mm",
        width = 180,
@@ -319,6 +304,64 @@ DEqMS.results_SAR11<- DEqMS_results %>%
   left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
   filter(grepl("Pelagibacterales", Order)) %>% 
   left_join(protein_metadata, by ="gene_callers_id")
+
+
+DEqMS.results_SAR11 %>% 
+  mutate(InterPro_ann=case_when(grepl("-", InterPro_acc)~Pfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  group_by(Enr.frac, InterPro_ann) %>% 
+  summarize(p=n()) %>% 
+  spread(Enr.frac, p) %>% 
+  mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
+         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
+  #filter(EVs>Cells) %>% 
+  View()
+
+#characterize the porins
+DEqMS.results_SAR11_Porins<- DEqMS.results_SAR11 %>% 
+  mutate(InterPro_ann=case_when(grepl("-", InterPro_acc)~Pfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  filter(grepl("Porin",InterPro_ann, ignore.case = TRUE))
+
+DEqMS.results_SAR11_Porins_seqs<- DEqMS.results_SAR11_Porins%>% 
+  select(gene_callers_id, aa_sequence) %>% unique() %>% 
+  mutate(gene_callers_id=paste0("gcid_",gene_callers_id))
+
+seqinr::write.fasta(as.list(DEqMS.results_SAR11_Porins_seqs$aa_sequence), names=DEqMS.results_SAR11_Porins_seqs$gene_callers_id, 
+                    as.string=FALSE, file.out="data/SAR11_porins.fa")
+
+
+
+
+#import psiblast results
+SAR11_psiblastp.out<- read.table("data/SAR11_porins_psiblastp.out", col.names =c("gene_callers_id","sseqid","pident","length","evalue","bitscore")) %>% 
+  filter(pident>20  & evalue<0.01) %>% 
+  mutate(gene_callers_id=gsub("gcid_","", gene_callers_id))
+
+
+& bitscore >50
+
+
+TCDB_annotation<- read.table("data/TCDB_1_B.ann", h=F, sep="\t")
+names(TCDB_annotation)<- c("sseqid", "TCID", "Annotation")
+
+#best hit by identitiy
+Cyano_porin_ann<- blastp.out %>% 
+  left_join(TCDB_annotation, by ="sseqid") %>%
+  group_by(gene_callers_id) %>% 
+  slice_max(pident, n = 1) 
+
+#merge annotation
+DEqMS.results_cyano_Porins<- DEqMS.results_cyano_Porins %>% 
+  left_join(Cyano_porin_ann, by = "gene_callers_id") %>% 
+  mutate(InterPro_ann=paste(TCID,Annotation, sep="_")) %>%
+  mutate(InterPro_ann=case_when(InterPro_ann=="NA_NA"~"Unknown porin", TRUE~InterPro_ann)) %>% 
+  select(-c("sseqid","pident","length","evalue","bitscore", "TCID", "Annotation"))
+
+
+
+
+
 
 
 
