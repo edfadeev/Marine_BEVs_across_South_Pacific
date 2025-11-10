@@ -32,11 +32,13 @@ protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep =
 protein_annotations<- read.csv("data/protein_annotations.txt", sep ="\t") %>% 
   mutate(gene_callers_id=as.character(gene_callers_id))
 
-DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)
+DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
 
 
 ############################
-# Explore enriched proteins of Cyanobacteria
+# Explore enriched proteins of SAR11
 ############################
 DEqMS.results_SAR11<- DEqMS_results %>% 
   left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>% 

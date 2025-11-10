@@ -32,7 +32,8 @@ protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep =
 protein_annotations<- read.csv("data/protein_annotations.txt", sep ="\t") %>% 
   mutate(gene_callers_id=as.character(gene_callers_id))
 
-DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)
+DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
 
 
 ############################
@@ -47,10 +48,10 @@ DEqMS.results_cyano<- DEqMS_results %>%
 
 DEqMS.results_cyano %>% 
   mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
-  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% View()
+  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% #View()
 group_by(Enr.frac, InterPro_ann) %>% 
   summarize(p=n()) %>% 
-  spread(Enr.frac, p) %>% 
+  tidyr::spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
          EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
   #filter(EVs>Cells) %>% 
@@ -117,6 +118,12 @@ DEqMS.results_cyno.p<- DEqMS.results_cyano %>%
   filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_cyano_Porins) %>% 
   #filter(InterPro_ann %in% c(DEqMS.results_cyano_total_by_frac %>% filter(EVs>Cells & EVs>4) %>% pull(InterPro_ann) )) %>% 
+  mutate(InterPro_ann=case_when(InterPro_ann=="1.B.23.1.2_Hypothetical protein slr0042 - Synechocystis sp. (strain PCC 6803)." ~"Iron uptake porin",
+                            InterPro_ann=="1.B.23.1.9_Carbohydrate-selective porin OprB OS=Fischerella sp. JSC-11 GN=FJSC11DRAFT_0273 PE=4 SV=1" ~"Carbohydrate-selective porin",
+                            InterPro_ann=="1.B.23.1.1_SOMA - Synechococcus sp. (strain PCC 6301) (Anacystis nidulans)."~ "SomA porin",
+                            InterPro_ann=="Flavodoxin/nitric oxide synthase" ~ "Flavoprotein",
+                            InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
+                            InterPro_ann == "Ferritin/DPS protein domain|ferredoxin-type" ~"Ferredoxin", TRUE~ InterPro_ann)) %>% 
   group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
   summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
 
@@ -126,17 +133,12 @@ DEqMS.results_cyno.p %>%
   filter(InterPro_ann %in% c(DEqMS.results_cyno.p %>% 
                                filter(count>2 & Enr.frac=="EVs") %>% 
                                pull(InterPro_ann))) %>% 
-  mutate(Function=case_when(InterPro_ann=="1.B.23.1.2_Hypothetical protein slr0042 - Synechocystis sp. (strain PCC 6803)." ~"Iron uptake porin",
-                            InterPro_ann=="1.B.23.1.9_Carbohydrate-selective porin OprB OS=Fischerella sp. JSC-11 GN=FJSC11DRAFT_0273 PE=4 SV=1" ~"Carbohydrate-selective porin",
-                            InterPro_ann=="1.B.23.1.1_SOMA - Synechococcus sp. (strain PCC 6301) (Anacystis nidulans)."~ "SomA porin",
-                            InterPro_ann=="Flavodoxin/nitric oxide synthase" ~ "Flavoprotein",
-                            InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
-                            InterPro_ann=="Ferritin/DPS protein domain"~"Ferredoxin", TRUE~ InterPro_ann)) %>% 
-  filter(!grepl("hypothetical", Function)) %>% 
+
+  filter(!grepl("hypothetical", InterPro_ann)) %>% 
   left_join(total_cyano_prot, by =c("Enr.frac", "Enr.group")) %>% 
   mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
          Prop=count/Total_p) %>% 
-  ggplot(aes(y=Function , x=log2fold_mean, fill = Enr.group, label = count))+ 
+  ggplot(aes(y=InterPro_ann , x=log2fold_mean, fill = Enr.group, label = count))+ 
   geom_point(aes(size = Prop), shape =21)+
   geom_text(size = 5, nudge_y = -0.2)+
   geom_errorbar(aes(xmin = log2fold_mean-log2fold_se, xmax = log2fold_mean +log2fold_se), 
@@ -159,3 +161,59 @@ ggsave("./Figures/cyano_proteins_regions.pdf",
        height = 90, 
        scale = 2,
        dpi = 300)
+
+
+
+
+
+protein_abund_clean <- read.table("data/protein_abund_clean.txt") %>% # Load raw spectral counts (no column of protein names)
+                            tibble::rownames_to_column("gene_callers_id") %>% 
+                            mutate(gene_callers_id=as.numeric(gene_callers_id)) %>% 
+                            arrange(gene_callers_id) %>%
+                            filter(gene_callers_id %in% c(unique(DEqMS.results_cyano$gene_callers_id))) %>% 
+                            tibble::column_to_rownames("gene_callers_id")
+                            
+                                                                      
+protein_len <- read.table("data/protein_metadata.txt",  header = TRUE) %>% # Load the protein lengths (ordered for the protein names)
+                    mutate(gene_callers_id=as.numeric(gene_callers_id)) %>% 
+                    arrange(gene_callers_id) %>% 
+                    filter(gene_callers_id %in% c(row.names(protein_abund_clean))) %>%  select(Length) 
+
+
+protein_len <- unlist(protein_len) # Unlist your protein lengths before you sweep
+protein_abund_sweep <- sweep(protein_abund_clean,1,protein_len,"/") # Divide spectral counts (SpC) for a protein by its length (L)
+
+protein_abund_sweep_total <- colSums(protein_abund_sweep, na.rm = TRUE) # Get the column sums for each cell-line/treatment
+protein_abund_sweep_total <- as.data.frame(protein_abund_sweep_total)
+protein_abund_sweep_total <- protein_abund_sweep_total[,1]
+
+protein_abund_NSAF <- sweep(protein_abund_sweep,2,protein_abund_sweep_total,"/") # Normalize by dividing by the sum of all SpC/L for all proteins identified 
+
+protein_Cyano_NSAF<- protein_abund_NSAF%>% tibble::rownames_to_column("gene_callers_id") %>% 
+                      reshape2::melt(variable.name = "Sample_ID", value.name="NSAF") %>% 
+                      left_join(DEqMS.results_cyano %>% 
+                                  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+                                  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+                                  filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
+                                  rbind(DEqMS.results_cyano_Porins) %>% select(gene_callers_id,InterPro_ann,NCBIfam_ann, blastp_ann) %>% unique(), by="gene_callers_id") %>% 
+                      mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+                      mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+                      mutate(Function=case_when(InterPro_ann=="1.B.23.1.2_Hypothetical protein slr0042 - Synechocystis sp. (strain PCC 6803)." ~"Iron uptake porin",
+                                InterPro_ann=="1.B.23.1.9_Carbohydrate-selective porin OprB OS=Fischerella sp. JSC-11 GN=FJSC11DRAFT_0273 PE=4 SV=1" ~"Carbohydrate-selective porin",
+                                InterPro_ann=="1.B.23.1.1_SOMA - Synechococcus sp. (strain PCC 6301) (Anacystis nidulans)."~ "SomA porin",
+                                InterPro_ann=="Flavodoxin/nitric oxide synthase" ~ "Flavoprotein",
+                                InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
+                                grepl("Ferritin/DPS protein domain|4Fe-4S ferredoxin-type", InterPro_ann) ~"Ferredoxin", is.na(InterPro_ann)~"Unknown", TRUE~ InterPro_ann)) %>% 
+                      mutate(Function=gsub("\\|.*","",Function)) %>% 
+                      group_by(Sample_ID, Function) %>% 
+                      summarize(Prop_abund=sum(NSAF, na.rm = TRUE)) %>% 
+                      filter(Prop_abund>0) %>% 
+                      left_join(samples_df, by="Sample_ID")
+
+protein_Cyano_NSAF %>% 
+  mutate(Function=case_when(Prop_abund<0.05~"Other proteins", TRUE~ Function)) %>% 
+  ggplot(aes(x=Station_ID, y=Prop_abund, fill=Function)) +
+  geom_col()+
+  scale_fill_manual(values = c(tol21rainbow,cbbPalette,"gray50"))+
+  facet_wrap(~Fraction)
+

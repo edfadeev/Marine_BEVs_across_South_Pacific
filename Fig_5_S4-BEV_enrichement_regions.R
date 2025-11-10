@@ -88,6 +88,8 @@ enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
 DEqMS_results<- bind_rows(enrichment_tests_list) %>% 
   filter(Enr.frac!="Not.enr")
 
+write.table(DEqMS_results, "data/DEqMS_results_regions.txt", col.names =T, row.names = F, quote = F)
+
 #total of different proteins
 DEqMS_results %>%  
   select(Enr.frac, gene_callers_id) %>% unique() %>% 
