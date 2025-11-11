@@ -55,7 +55,7 @@ fit4 = spectraCounteBayes(fit3)
 DEqMS.results <- outputResult(fit4,coef_col = 1) %>% 
   dplyr::rename("gene_callers_id"="gene") %>% 
   mutate(Enr.frac = case_when(logFC>1 & sca.adj.pval<0.1  
-                              ~ "EVs",
+                              ~ "BEVs",
                               -1> logFC & sca.adj.pval<0.1  
                               ~ "Cells", TRUE ~ "Not.enr")) %>% 
   left_join(protein_metadata , by = "gene_callers_id")

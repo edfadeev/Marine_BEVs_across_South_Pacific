@@ -73,7 +73,7 @@ enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
   DEqMS.results <- outputResult(fit4,coef_col = 1) %>% 
                  dplyr::rename("gene_callers_id"="gene") %>% 
                  mutate(Enr.frac = case_when(logFC>1 & sca.adj.pval<0.1  
-                                             ~ "EVs",
+                                             ~ "BEVs",
                                              -1> logFC & sca.adj.pval<0.1  
                                              ~ "Cells", TRUE ~ "Not.enr"),
                         log.sca.pval = -log10(sca.P.Value),

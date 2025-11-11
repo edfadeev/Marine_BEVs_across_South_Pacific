@@ -96,19 +96,7 @@ enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
   Cell_sample_IDs<- samples_meta_sub %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
   
   prot.dat.log2_norm.filter <- prot.dat.log2_norm[OM_prot_gcids,]
-  prot.dat.log2_norm.filter <- prot.dat.log2_no#characterize the porins
-  DEqMS.results_cyano_Porins<- DEqMS.results_cyano %>% 
-    mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
-    mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
-    filter(grepl("Porin",InterPro_ann, ignore.case = TRUE))
-  
-  DEqMS.results_cyano_Porins_seqs<- DEqMS.results_cyano_Porins%>% 
-    select(gene_callers_id, aa_sequence) %>% unique() %>% 
-    mutate(gene_callers_id=paste0("gcid_",gene_callers_id))
-  
-  seqinr::write.fasta(as.list(DEqMS.results_cyano_Porins_seqs$aa_sequence), names=DEqMS.results_cyano_Porins_seqs$gene_callers_id, 
-                      as.string=FALSE, file.out="data/Cyano_porins.fa")rm.filter[,c(EV_sample_IDs,Cell_sample_IDs)]
-  
+  prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[,c(EV_sample_IDs,Cell_sample_IDs)]
   # Filter proteins that were observed in at least two samples in each fraction
   prot.dat.log2_norm.filter <- prot.dat.log2_norm.filter[rowSums(!is.na(prot.dat.log2_norm.filter[, c(EV_sample_IDs)]))>1 &
                                                            rowSums(!is.na(prot.dat.log2_norm.filter[, c(Cell_sample_IDs)]))>1,]
@@ -142,6 +130,8 @@ enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
 ############################
 DEqMS_OM_results<- bind_rows(enrichment_tests_list) %>% 
   filter(Enr.frac!="Not.enr")
+
+write.table(DEqMS_OM_results, "data/DEqMS_OM_results_regions.txt", col.names =T, row.names = F, quote = F)
 
 #total of different proteins
 DEqMS_OM_results %>% select(Enr.frac, gene_callers_id) %>% 
@@ -198,20 +188,18 @@ TCDB_TonB_desc<- read.csv("data/TCDB_1B_description.txt", sep ="\t") %>%
   mutate(Name=iconv(Name, from = "latin1", to = "UTF-8", sub = ""))
 
 
-
-
 #best hit by identitiy
 TonB_ann<- blastp.out %>% 
   left_join(TCDB_annotation, by ="sseqid") %>%
   group_by(gene_callers_id) %>% 
   slice_max(pident, n = 1) %>% 
   left_join(TCDB_TonB_desc, by="TCID") %>% 
-  mutate(TonB_category=case_when(grepl("SusC",Name, ignore.case=TRUE)~"SusC",
+  mutate(TonB_category=case_when(grepl("SusC",Name, ignore.case=TRUE)~"SusC-like",
                                  grepl("siderophore",Name, ignore.case=TRUE)~"Siderophores",
                                  grepl("catechol|chelin",Name, ignore.case=TRUE)~"Siderophores",
                                  grepl("bactin",Name, ignore.case=TRUE)~"Siderophores",
-                                 grepl("cobalamin",Name, ignore.case=TRUE)~"Cobalamine/phage",
-                                 grepl("FecA",Name, ignore.case=TRUE)~"Citrate/nickel",
+                                 grepl("cobalamin",Name, ignore.case=TRUE)~"Cobalamine",
+                                 grepl("FecA",Name, ignore.case=TRUE)~"Ferric citrate",
                                  grepl("CfrA|RagA",Name, ignore.case=TRUE)~"Iron",
                                  grepl("Ferrioxamine",Name, ignore.case=TRUE)~"Ferrioxamine",
                                  grepl("heme",Name, ignore.case=TRUE)~"Heme",
@@ -219,13 +207,27 @@ TonB_ann<- blastp.out %>%
                                  grepl("oligosaccharide",Name, ignore.case=TRUE)~"Oligosaccharides",
                                  grepl("salicin",Name, ignore.case=TRUE)~"Glucosides",
                                  grepl("collagenase",Name, ignore.case=TRUE)~"Collagenases",
-                                TRUE~"Unknown ligands"))
+                                TRUE~"Unknown ligands")) %>% 
+  mutate(TonB_category=case_when(grepl("FecA3 ",Proteins, ignore.case=TRUE)~"Nickel",TRUE~TonB_category)) 
+
+
+#add SusD enriched proteins
+DEqMS_OM_results_SusD<- DEqMS_OM_results %>% 
+  left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>%
+  left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
+  left_join(protein_metadata, by ="gene_callers_id") %>% 
+  mutate(TonB_category=case_when(grepl("SusD", InterPro_ann, ignore.case = TRUE)~"SusD-like",
+                            TRUE~"Other")) %>% 
+  filter(TonB_category!="Other") %>% 
+  select(Enr.group, Enr.frac, Class, TonB_category, logFC)
 
 #merge and summarize
 DEqMS_OM_TonB_total_by_frac<- DEqMS_OM_TonB %>% 
   left_join(TonB_ann,  by ="gene_callers_id") %>% 
-  group_by(Enr.group, Enr.frac, TonB_category) %>% 
-  mutate(TonB_category=case_when(is.na(TonB_category)~"No_hits",TRUE~TonB_category)) %>% 
+  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category)) %>%
+  select(Enr.group, Enr.frac, TonB_category, logFC) %>% 
+  rbind(DEqMS_OM_results_SusD %>% select(Enr.group, Enr.frac, TonB_category, logFC)) %>% 
+  group_by(Enr.frac, TonB_category) %>% 
   summarize(p=n()) %>% 
   spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
@@ -234,9 +236,10 @@ DEqMS_OM_TonB_total_by_frac<- DEqMS_OM_TonB %>%
 #plot results
 DEqMS_OM_TonB.p<- DEqMS_OM_TonB %>% 
   left_join(TonB_ann,  by ="gene_callers_id") %>% 
-  group_by(Enr.group, Enr.frac, TonB_category) %>% 
-  mutate(TonB_category=case_when(is.na(TonB_category)~"No_hits",TRUE~TonB_category)) %>% 
-  group_by(Enr.group, Enr.frac, TonB_category) %>% 
+  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category)) %>% 
+  select(Enr.group, Enr.frac, TonB_category, logFC) %>% 
+  rbind(DEqMS_OM_results_SusD %>% select(Enr.group, Enr.frac, TonB_category, logFC)) %>% 
+  group_by(Enr.group, Enr.frac,  TonB_category) %>% 
   summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
 
 total_TonB_prot<- DEqMS_OM_TonB.p %>% group_by(Enr.frac,Enr.group) %>% summarize(Total_p=sum(count))
@@ -244,16 +247,19 @@ total_TonB_prot<- DEqMS_OM_TonB.p %>% group_by(Enr.frac,Enr.group) %>% summarize
 DEqMS_OM_TonB.p %>%
   left_join(total_TonB_prot, by =c("Enr.frac", "Enr.group")) %>% 
   mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
+         TonB_category= factor(TonB_category, levels =c("Unknown ligands", "Cobalamine","Collagenases", "Nickel", 
+                                                        "Oligosaccharides", "Glucosides","SusC-like", "SusD-like",
+                                                         "Ferric citrate", "Ferrioxamine", "Heme", "Iron", "Siderophores", "Transferrin")),
          Prop=count/Total_p) %>% 
   ggplot(aes(y=TonB_category , x=log2fold_mean, fill = Enr.group, label = count))+ 
   geom_point(aes(size = Prop), shape =21)+
   geom_text(size = 5, nudge_y = -0.2)+
   geom_errorbar(aes(xmin = log2fold_mean-log2fold_se, xmax = log2fold_mean +log2fold_se), 
                 width = 0.2) + 
-  #xlim(-10,10)+
+  xlim(-7,7)+
   facet_grid(~Enr.group)+  
   geom_vline(aes(xintercept=0), linetype="dashed")+
-  scale_size_continuous(range = c(1, 20))+
+  scale_size_continuous(range = c(10, 30))+
   scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
   theme_EF+
   theme(legend.position = "bottom",
@@ -261,7 +267,7 @@ DEqMS_OM_TonB.p %>%
 
 
 #save the plot
-ggsave("./Figures/cyano_proteins_regions.pdf",
+ggsave("./Figures/TonB_proteins_regions.pdf",
        plot = last_plot(),
        units = "mm",
        width = 180,
@@ -270,3 +276,36 @@ ggsave("./Figures/cyano_proteins_regions.pdf",
        dpi = 300)
 
 
+#add taxonomy pie charts 
+
+#plot results
+DEqMS_OM_TonB %>% 
+  left_join(TonB_ann,  by ="gene_callers_id") %>% 
+  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category)) %>% 
+  select(Enr.group, Enr.frac, Class, TonB_category, logFC) %>% 
+  rbind(DEqMS_OM_results_SusD) %>% 
+  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category),
+         Class=case_when(is.na(Class)~"Unclassified",TRUE~Class)) %>% 
+  dplyr::count(Enr.group, Enr.frac, Class, TonB_category) %>%
+  group_by(Enr.group, Enr.frac, TonB_category) %>% # Re-group by the desired summation level
+  mutate(freq = n / sum(n)) %>% 
+  ggplot(aes(x="", y=freq, fill=Class)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() + # remove background, grid, numeric labels
+  scale_fill_manual(values=c(cbbPalette, tol21rainbow))+
+  facet_wrap(Enr.group~Enr.frac+TonB_category)
+  
+
+#save the plot
+ggsave("./Figures/TonB_proteins_regions_pies.pdf",
+       plot = last_plot(),
+       units = "mm",
+       #width = 180,
+       #height = 90, 
+       scale = 2,
+       dpi = 300)
+
+  
+
+  
