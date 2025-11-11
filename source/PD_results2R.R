@@ -58,8 +58,8 @@ write.table(protein_abund, "data/protein_abund.txt", col.names = TRUE, row.names
 #Protein annotations
 ############################
 #functional annotation using InterProScan
-interpro_annotations<- lapply(c("InterPro", "Pfam","NCBIfam",
-                                #"SUPERFAMILY","PANTHER","ProSitePatterns",
+interpro_annotations<- lapply(c("InterPro", "Pfam","NCBIfam"
+                                #,"SUPERFAMILY", "PANTHER","ProSitePatterns",
                                 #"Phobius","SignalP_GRAM_NEGATIVE","SignalP_GRAM_POSITIVE" 
                                 ),
                               function(src){
