@@ -1,6 +1,7 @@
 require(dplyr)
 require(DEqMS)
 require(vegan)
+require(tibble)
 
 
 #calculate standard error
@@ -9,7 +10,9 @@ se <- function(x, na.rm=FALSE) {
   sqrt(var(x)/length(x))
 }
 
+############################
 #import normalized protein abundance table and metadata
+############################
 samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
@@ -17,9 +20,33 @@ samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>%
                                                     "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
                                                     "SO289_3", "SO289_1"))) 
 
-protein_abund<- read.table("data/protein_abund.txt", row.names=1)
+protein_abund<- read.table("data/protein_abund.txt",  header = TRUE)
 
-protein_taxonomy<- read.table("data/protein_annotations.txt", col.names = TRUE, row.names=FALSE)
+protein_metadata<- read.table("data/protein_metadata.txt",  header = TRUE)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_annotations<- read.csv("data/protein_annotations.txt", sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+
+############################
+#Export raw abudnance table with annotations
+############################
+protein_abund %>% tibble::rownames_to_column("gene_callers_id") %>% 
+  left_join(protein_metadata, by ="gene_callers_id") %>% 
+  left_join(protein_annotations %>% select(c("gene_callers_id","InterPro_acc","InterPro_ann","NCBIfam_acc","NCBIfam_ann", "Pfam_acc","Pfam_ann", "deeploc")), by ="gene_callers_id") %>% 
+  left_join(protein_taxonomy, by ="gene_callers_id") %>% 
+  openxlsx::write.xlsx(., colNames = TRUE, 
+                       file= 'Tables/Table_S2-Protein_abundance.xlsx')
+
+
+
 
 ############################
 #Number of identified proteins

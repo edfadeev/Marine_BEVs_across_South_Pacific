@@ -129,21 +129,25 @@ enrichment_tests_list <- lapply(c("WEST","GYRE", "TRAN"), function(x) {
 #Explore results
 ############################
 DEqMS_OM_results<- bind_rows(enrichment_tests_list) %>% 
-  filter(Enr.frac!="Not.enr")
+  filter(Enr.frac!="Not.enr") %>% 
+  left_join(protein_annotations, by = "gene_callers_id", relationship = "many-to-many") %>%
+  left_join(protein_taxonomy, by = "gene_callers_id") %>% 
+  left_join(protein_metadata, by="gene_callers_id")
 
-write.table(DEqMS_OM_results, "data/DEqMS_OM_results_regions.txt", col.names =T, row.names = F, quote = F)
+DEqMS_OM_results %>% 
+  select(c(names(DEqMS_OM_results)), Phylum, Class,Order,Family,Genus, starts_with("InterPro_"), starts_with("NCBIfam_"),
+         starts_with("Pfam_"), Number.of.PSMs,Number.of.Unique.Peptide,Number.of.Razor.Peptide,Length, aa_sequence) %>% 
+  openxlsx::write.xlsx(., colNames = TRUE, 
+                       file= "Tables/Table_S5-DEqMS_OM_results_regions.xlsx")
 
 #total of different proteins
-DEqMS_OM_results %>% select(Enr.frac, gene_callers_id) %>% 
-  group_by(Enr.frac) %>% 
+DEqMS_OM_results %>% select(Enr.frac,Enr.group, gene_callers_id) %>% 
+  group_by(Enr.frac,Enr.group) %>% 
   summarize(Total_p = n())
 
 
 #extract only enriched TonB-related proteins
 DEqMS_OM_TonB<- DEqMS_OM_results %>% 
-  left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>% 
-  left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
-  left_join(protein_metadata, by ="gene_callers_id") %>% 
   mutate(Function=case_when(NCBIfam_acc %in% TonBs_acc ~ NCBIfam_ann, 
                             grepl("TonB", InterPro_ann, ignore.case = TRUE)~InterPro_ann,
                             grepl("TONB", blastp_ann, ignore.case = TRUE)~ gsub("\\[.*|MULTISPECIES:","",blastp_ann),
@@ -213,13 +217,10 @@ TonB_ann<- blastp.out %>%
 
 #add SusD enriched proteins
 DEqMS_OM_results_SusD<- DEqMS_OM_results %>% 
-  left_join(protein_annotations %>% unique(), by ="gene_callers_id") %>%
-  left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
-  left_join(protein_metadata, by ="gene_callers_id") %>% 
   mutate(TonB_category=case_when(grepl("SusD", InterPro_ann, ignore.case = TRUE)~"SusD-like",
-                            TRUE~"Other")) %>% 
+                                 TRUE~"Other")) %>% 
   filter(TonB_category!="Other") %>% 
-  select(Enr.group, Enr.frac, Class, TonB_category, logFC)
+  select(Enr.group, Enr.frac, Class,Order, TonB_category, logFC)
 
 #merge and summarize
 DEqMS_OM_TonB_total_by_frac<- DEqMS_OM_TonB %>% 
@@ -247,15 +248,15 @@ total_TonB_prot<- DEqMS_OM_TonB.p %>% group_by(Enr.frac,Enr.group) %>% summarize
 DEqMS_OM_TonB.p %>%
   left_join(total_TonB_prot, by =c("Enr.frac", "Enr.group")) %>% 
   mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
-         TonB_category= factor(TonB_category, levels =c("Unknown ligands", "Cobalamine","Collagenases", "Nickel", 
+         TonB_category= factor(TonB_category, levels =c("Unknown ligands", "Collagenases", "Cobalamine", "Nickel", 
                                                         "Oligosaccharides", "Glucosides","SusC-like", "SusD-like",
                                                          "Ferric citrate", "Ferrioxamine", "Heme", "Iron", "Siderophores", "Transferrin")),
          Prop=count/Total_p) %>% 
   ggplot(aes(y=TonB_category , x=log2fold_mean, fill = Enr.group, label = count))+ 
-  geom_point(aes(size = Prop), shape =21)+
-  geom_text(size = 5, nudge_y = -0.2)+
   geom_errorbar(aes(xmin = log2fold_mean-log2fold_se, xmax = log2fold_mean +log2fold_se), 
                 width = 0.2) + 
+  geom_point(aes(size = Prop), shape =21)+
+  #geom_text(size = 5, nudge_y = -0.2)+
   xlim(-7,7)+
   facet_grid(~Enr.group)+  
   geom_vline(aes(xintercept=0), linetype="dashed")+
@@ -271,30 +272,46 @@ ggsave("./Figures/TonB_proteins_regions.pdf",
        plot = last_plot(),
        units = "mm",
        width = 180,
-       height = 90, 
+       height = 160, 
        scale = 2,
        dpi = 300)
 
 
 #add taxonomy pie charts 
 
+
 #plot results
 DEqMS_OM_TonB %>% 
   left_join(TonB_ann,  by ="gene_callers_id") %>% 
   mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category)) %>% 
-  select(Enr.group, Enr.frac, Class, TonB_category, logFC) %>% 
+  select(Enr.group, Enr.frac, Class,Order, TonB_category, logFC) %>% 
   rbind(DEqMS_OM_results_SusD) %>% 
-  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category),
-         Class=case_when(is.na(Class)~"Unclassified",TRUE~Class)) %>% 
-  dplyr::count(Enr.group, Enr.frac, Class, TonB_category) %>%
+  mutate(TonB_category=case_when(is.na(TonB_category)~"Unknown ligands",TRUE~TonB_category)) %>% 
+  dplyr::count(Enr.group, Enr.frac, Class, Order, TonB_category) %>%
   group_by(Enr.group, Enr.frac, TonB_category) %>% # Re-group by the desired summation level
   mutate(freq = n / sum(n)) %>% 
-  ggplot(aes(x="", y=freq, fill=Class)) +
-  geom_bar(stat="identity", width=1, color="white") +
+  mutate(Taxa=case_when(freq<0.1~"Other taxa", 
+                        is.na(Order) & is.na(Class)~"Other taxa",
+                        is.na(Order) & !is.na(Class) ~ paste0(Class, "_uncl"),
+                        grepl("Pelagibacterales", Order)~"Pelagibacterales",
+                        Order=="Candidatus Puniceispirillales"~"Puniceispirillales",
+                        TRUE~Order)) %>%  #pull(Taxa) %>% unique()
+  mutate(Taxa = factor(Taxa, levels=c( "Caulobacterales", "Hyphomonadales" , "Kordiimonadales","Maricaulales","Parvularculales","Pelagibacterales" ,"Puniceispirillales",
+                                       "Rhodobacterales" , "Rhodospirillales" , "Rickettsiales" , "Sphingomonadales", "Sphingobacteriales" , "Alphaproteobacteria_uncl", "Burkholderiales", 
+                                       "Cytophagales" , 
+                                       "Flavobacteriales" ,
+                                       "Alteromonadales" , "Cellvibrionales" , "Lysobacterales" , "Moraxellales", "Methylococcales",
+                                       "Oceanospirillales" , "Pseudomonadales" , "Xanthomonadales" , "Gammaproteobacteria_uncl", "Pseudomonadota", "Puniceicoccales",
+                                       "Other taxa"))) %>% 
+  group_by(Enr.group, Enr.frac, Taxa, TonB_category) %>% 
+  summarize(Total_prop=sum(freq)) %>% 
+  ggplot(aes(x="", y=Total_prop, fill=Taxa)) +
+  geom_bar(stat="identity") +
   coord_polar("y", start=0) +
   theme_void() + # remove background, grid, numeric labels
-  scale_fill_manual(values=c(cbbPalette, tol21rainbow))+
+  scale_fill_manual(values=c(tol21rainbow, "gray50"))+
   facet_wrap(Enr.group~Enr.frac+TonB_category)
+
   
 
 #save the plot

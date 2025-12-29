@@ -5,7 +5,7 @@ require(dplyr)
 source("source/ggplot_parameters.R")
 
 #import metadata
-samples_meta_df<- read.table("data/samples_meta.txt", sep ="\t", header = TRUE, row.names = 1) %>% 
+samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
                                                     "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
@@ -33,7 +33,7 @@ merged_read_counts<- merged_report%>%
   dplyr::rename(Reads=value) %>% 
   select(-variable) %>% 
   left_join(reports_overview, by="Station_ID") %>% 
-  left_join(samples_meta_df %>% filter(Fraction  =="Cells"), by="Station_ID") 
+  left_join(samples_df %>% filter(Fraction  =="Cells"), by="Station_ID") 
 
 ##########################################
 # Plot Bacterial composition             #
@@ -97,6 +97,67 @@ BAC_class_proportion %>%
 
 #save the plot
 ggsave("./Figures/metaG_class_comp.pdf",
+       plot = last_plot(),
+       units = "mm",
+       width = 180,
+       height = 90, 
+       scale = 2,
+       dpi = 300)
+
+
+
+#Order level
+#remove below 0.01% reads
+top_Order <- BAC_read_proportion %>% 
+  #mutate(TaxRank= case_when(Name=="Cyanobacteria/Melainabacteria group" ~ "C", TRUE ~ TaxRank)) %>% 
+  #mutate(Name =case_when(Name=="Cyanobacteria/Melainabacteria group" ~ "Cyanobacteria", TRUE ~ Name)) %>% 
+  filter(TaxRank=="O" & Proportion>0.01) %>% pull(Name) %>% unique() 
+
+BAC_Order_proportion <- BAC_read_proportion %>%  
+  #mutate(TaxRank= case_when(Name=="Cyanobacteria/Melainabacteria group" ~ "C", TRUE ~ TaxRank)) %>% 
+  #mutate(Name =case_when(Name=="Cyanobacteria/Melainabacteria group" ~ "Cyanobacteria", TRUE ~ Name)) %>% 
+  filter(TaxRank=="O") %>% 
+  mutate(Name = case_when(Proportion< 0.01 ~ "Other orders < 1%", TRUE ~ Name))
+
+BAC_Order_proportion <- BAC_Order_proportion %>% 
+  mutate(Name = factor(Name,levels=c(top_Order,"Other orders < 1%", "Unclassified")))
+
+#complement all the unfamilyifed reads 
+BAC_Order_uncl <- BAC_Order_proportion %>%  
+  select(Name, Region,  Station_ID, Proportion) %>% 
+  group_by(Region,Station_ID) %>% 
+  summarize(Total = sum(Proportion)) %>% 
+  mutate(Proportion = 1- Total, Name = "Unclassified") %>% 
+  select(Name, Region, Station_ID, Proportion)
+
+#plot
+BAC_Order_proportion %>% 
+  select(Name, Region, Station_ID, Proportion) %>% 
+  rbind(BAC_Order_uncl) %>% 
+  mutate(Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
+                                                    "SO289_33", "SO289_32", "SO289_30", "SO289_27", "SO289_23", "SO289_20", 
+                                                    "SO289_17", "SO289_16", "SO289_13", "SO289_12", "SO289_9", "SO289_6", 
+                                                    "SO289_3", "SO289_1")),
+         Name = factor(Name, levels=c("Streptomycetales",
+                      "Hyphomicrobiales" , "Pelagibacterales" ,"Rhodobacterales" ,  "Sphingomonadales" , 
+                      "Bacillales","Lactobacillales" ,
+                     "Cytophagales" , "Eubacteriales", "Synechococcales", "Flavobacteriales" ,
+                     "Alteromonadales" , "Cellvibrionales" , "Enterobacterales" , 
+                     "Oceanospirillales" , "Pseudomonadales" , "Xanthomonadales" , 
+                     "Campylobacterales",
+                     "Other orders < 1%", 
+                     "Unclassified"))) %>% 
+  ggplot(aes(x= Station_ID, y= Proportion, fill = Name)) +
+  geom_col()+
+  scale_fill_manual(values = rev(c(tol21rainbow)))+
+  facet_grid(cols=vars(Region),scales="free_x",space="free_x",switch="x") +
+  labs(y ="Proportion of bacterial reads")+
+  guides(fill = guide_legend(title="Family", ncol = 1))+
+  theme_EF+
+  theme(axis.text.x = element_text(angle=90))
+
+#save the plot
+ggsave("./Figures/metaG_order_comp.pdf",
        plot = last_plot(),
        units = "mm",
        width = 180,

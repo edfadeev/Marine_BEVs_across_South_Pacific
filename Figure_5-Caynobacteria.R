@@ -13,7 +13,9 @@ se <- function(x, na.rm=FALSE) {
   sqrt(var(x)/length(x))
 }
 
+############################
 #import normalized protein abundance table and metadata
+############################
 samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
@@ -47,13 +49,14 @@ DEqMS.results_cyano<- DEqMS_results %>%
 
 
 DEqMS.results_cyano %>% 
-  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
-  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% #View()
+  mutate(InterPro_ann=case_when(!is.na(NCBIfam_ann)~NCBIfam_ann,
+                                InterPro_ann=="-"~Pfam_ann,
+                                is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
 group_by(Enr.frac, InterPro_ann) %>% 
   summarize(p=n()) %>% 
   tidyr::spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
-         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
+         BEVs=case_when(is.na(BEVs)~0, TRUE~BEVs)) %>% 
   #filter(EVs>Cells) %>% 
   View()
 
@@ -101,43 +104,54 @@ DEqMS.results_cyano_Porins<- DEqMS.results_cyano_Porins %>%
 
 #merge and summarize
 DEqMS.results_cyano_total_by_frac<- DEqMS.results_cyano %>% 
-  mutate(InterPro_ann=case_when(InterPro_ann=="-"~NCBIfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
-  mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
+  mutate(InterPro_ann=case_when(!is.na(NCBIfam_ann)~NCBIfam_ann,
+                                InterPro_ann=="-"~Pfam_ann,
+                                is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
   filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_cyano_Porins) %>% 
   group_by(Enr.frac, InterPro_ann) %>% 
   summarize(p=n()) %>% 
   spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
-         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) 
+         BEVs=case_when(is.na(BEVs)~0, TRUE~BEVs)) 
 
 #plot results
 DEqMS.results_cyno.p<- DEqMS.results_cyano %>% 
-  mutate(InterPro_ann=case_when(InterPro_ann=="-"~Pfam_ann, is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(InterPro_ann=case_when(!is.na(NCBIfam_ann)~NCBIfam_ann,
+                                InterPro_ann=="-"~Pfam_ann,
+                                is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
   mutate(InterPro_ann=gsub("\\[.*|MULTISPECIES:","",InterPro_ann)) %>% 
   filter(!grepl("Porin",InterPro_ann, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_cyano_Porins) %>% 
-  #filter(InterPro_ann %in% c(DEqMS.results_cyano_total_by_frac %>% filter(EVs>Cells & EVs>4) %>% pull(InterPro_ann) )) %>% 
   mutate(InterPro_ann=case_when(InterPro_ann=="1.B.23.1.2_Hypothetical protein slr0042 - Synechocystis sp. (strain PCC 6803)." ~"Iron uptake porin",
                             InterPro_ann=="1.B.23.1.9_Carbohydrate-selective porin OprB OS=Fischerella sp. JSC-11 GN=FJSC11DRAFT_0273 PE=4 SV=1" ~"Carbohydrate-selective porin",
                             InterPro_ann=="1.B.23.1.1_SOMA - Synechococcus sp. (strain PCC 6301) (Anacystis nidulans)."~ "SomA porin",
-                            InterPro_ann=="Flavodoxin/nitric oxide synthase" ~ "Flavoprotein",
+                            InterPro_ann=="flavodoxin" ~ "Flavodoxin",
                             InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
-                            InterPro_ann == "Ferritin/DPS protein domain|ferredoxin-type" ~"Ferredoxin", TRUE~ InterPro_ann)) %>% 
+                            InterPro_ann=="Phycobilisome, alpha/beta subunit"~"Phycobilisome",
+                            InterPro_ann == " hypothetical protein " ~"Hypothetical protein",
+                            InterPro_ann == "superoxide dismutase, Ni" ~ "Nickel-containing superoxide dismutase",
+                            InterPro_ann =="Cyclophilin-type peptidyl-prolyl cis-trans isomerase domain"~"Peptidylprolyl isomerase",
+                            TRUE~ InterPro_ann)) %>% 
   group_by(Enr.group, Enr.frac, InterPro_ann) %>% 
   summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
 
 total_cyano_prot<- DEqMS.results_cyno.p %>% group_by(Enr.frac,Enr.group) %>% summarize(Total_p=sum(count))
 
-DEqMS.results_cyno.p %>%
-  filter(InterPro_ann %in% c(DEqMS.results_cyno.p %>% 
-                               filter(count>2 & Enr.frac=="EVs") %>% 
-                               pull(InterPro_ann))) %>% 
+InterPro_functions<- DEqMS.results_cyno.p %>% 
+  filter(count>2 & Enr.frac=="BEVs") %>% 
+  pull(InterPro_ann) %>% unique()
 
-  filter(!grepl("hypothetical", InterPro_ann)) %>% 
-  left_join(total_cyano_prot, by =c("Enr.frac", "Enr.group")) %>% 
+
+
+DEqMS.results_cyno.p %>% filter(InterPro_ann %in% InterPro_functions) %>% 
+  left_join(total_cyano_prot, by =c("Enr.frac", "Enr.group")) %>%
   mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
-         Prop=count/Total_p) %>% 
+         Prop=count/Total_p,
+         InterPro_ann= factor(InterPro_ann, levels =rev(c("Carbohydrate-selective porin", "SomA porin", "Iron uptake porin", "Unclassified porin",
+                              "Ferritin/DPS protein domain", "Flavodoxin", "Nickel-containing superoxide dismutase", "Phycobilisome",
+                              "aspartate--tRNA ligase","AbrB-like transcriptional regulator", "Helix-hairpin-helix domain", "Peptidylprolyl isomerase", 
+                              "Nitrogen regulatory protein PII", "Pentapeptide repeat", "pyruvate kinase", "Hypothetical protein")))) %>%
   ggplot(aes(y=InterPro_ann , x=log2fold_mean, fill = Enr.group, label = count))+ 
   geom_point(aes(size = Prop), shape =21)+
   geom_text(size = 5, nudge_y = -0.2)+

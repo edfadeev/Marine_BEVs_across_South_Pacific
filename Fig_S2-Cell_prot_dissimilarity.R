@@ -13,8 +13,9 @@ se <- function(x, na.rm=FALSE) {
 }
 
 
-
+############################
 #import normalized protein abundance table and metadata
+############################
 samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
   mutate(Region = factor(Region, levels = c("WEST","GYRE","TRAN","UP")),
          Station_ID = factor(Station_ID, levels = c("SO289_44", "SO289_43", "SO289_41",  "SO289_39", "SO289_37", "SO289_34",
@@ -23,6 +24,18 @@ samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>%
                                                     "SO289_3", "SO289_1"))) 
 
 prot.dat.log2_norm<- read.table("data/protein_abund_log2_norm.txt",  header = TRUE)
+
+protein_metadata<- read.table("data/protein_metadata.txt",  header = TRUE)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+protein_annotations<- read.csv("data/protein_annotations.txt", sep ="\t") %>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
+
+DEqMS_results<- read.table("data/DEqMS_results_regions.txt", h=T)%>% 
+  mutate(gene_callers_id=as.character(gene_callers_id))
 
 ##########################################
 #Dissimilarity between cellular proteomes#
@@ -77,7 +90,7 @@ prot_NMDS.scores %>%
              colour = Region,  label = Sample_ID))+
   geom_point(size =7, colour = "black")+
   geom_point(size =5)+
-  geom_text(nudge_y = -2, size =4)+
+  #geom_text(nudge_y = -2, size =4)+
   scale_color_manual(values = c("#009E73", "#F0E442", "#0072B2", 
                                 "#D55E00"))+
   theme_EF+
@@ -148,13 +161,17 @@ enrichment_tests_list <- lapply(c("UP_TRAN","TRAN_GYRE","GYRE_WEST"), function(x
 })
 
 #generate results dataframe 
-DEqMS_results<- bind_rows(enrichment_tests_list) %>% filter(Enr.reg!="Not.enr") %>% 
+DEqMS_results<- bind_rows(enrichment_tests_list)
+
+
+DEqMS_results_regions<- DEqMS_results%>% filter(Enr.reg!="Not.enr") %>% 
   left_join(protein_annotations, by = "gene_callers_id", relationship = "many-to-many") %>% unique() %>% 
-  left_join(protein_taxonomy, by = "gene_callers_id") 
+  left_join(protein_taxonomy, by = "gene_callers_id") %>% 
+  left_join(protein_metadata, by="gene_callers_id")
 
 
 #overview of total enriched proteins
-DEqMS_results %>% filter(Enr.reg!="Not.enr") %>% 
+DEqMS_results_regions %>% filter(Enr.reg!="Not.enr") %>% 
   group_by(Enr.reg, Class) %>% unique() %>% 
   summarize(count=n())
 
@@ -162,9 +179,9 @@ DEqMS_results %>% filter(Enr.reg!="Not.enr") %>%
 ############################
 #export results for excel 
 ############################
-DEqMS_results %>% filter(Enr.reg!="Not.enr") %>% 
-  select(Comp, Enr.reg, logFC, sca.adj.pval, starts_with("InterPro_"), starts_with("NCBIfam_"),
-         starts_with("Pfam_"), Domain, Phylum, Class,Order,Family,Genus) %>% 
+DEqMS_results_regions %>% filter(Enr.reg!="Not.enr") %>% 
+  select(Comp, Enr.reg, c(names(DEqMS_results)), Phylum, Class,Order,Family,Genus, starts_with("InterPro_"), starts_with("NCBIfam_"),
+         starts_with("Pfam_"), Number.of.PSMs,Number.of.Unique.Peptide,Number.of.Razor.Peptide,Length, aa_sequence) %>% 
   openxlsx::write.xlsx(., colNames = TRUE, 
                        file= 'Tables/Table_S2-DEqMS_results_regions.xlsx')
 

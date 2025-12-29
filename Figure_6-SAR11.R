@@ -45,25 +45,24 @@ DEqMS.results_SAR11<- DEqMS_results %>%
   left_join(protein_taxonomy %>% unique(), by ="gene_callers_id") %>%
   filter(grepl("Pelagibacterales", Order)) %>% 
   left_join(protein_metadata, by ="gene_callers_id") %>% 
-  mutate(Function=case_when(InterPro_ann=="-"~gsub("\\[.*|MULTISPECIES:","",blastp_ann), 
-                            is.na(InterPro_ann) ~ blastp_ann, 
-                            TRUE~InterPro_ann)) %>% 
-  mutate(Function=case_when(grepl("Porin",Function, ignore.case = TRUE)~"Porin", TRUE~Function))
+  mutate(InterPro_ann=case_when(!is.na(NCBIfam_ann)~NCBIfam_ann,
+                                InterPro_ann=="-"~Pfam_ann,
+                                is.na(InterPro_ann) ~ blastp_ann, TRUE~InterPro_ann)) %>% 
+  mutate(Function=case_when(grepl("Porin",InterPro_ann, ignore.case = TRUE)~"Porin", TRUE~InterPro_ann))
                                 
                                 
 DEqMS.results_SAR11 %>% 
-  group_by(Enr.frac, Function) %>% 
+  group_by(Enr.frac, InterPro_ann, Function) %>% 
   summarize(p=n()) %>% 
   spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
-         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% 
-  #filter(EVs>Cells) %>% 
+         BEVs=case_when(is.na(BEVs)~0, TRUE~BEVs)) %>% 
   View()
 
 
 #characterize the porins
 DEqMS.results_SAR11_ABC<- DEqMS.results_SAR11 %>% 
-  filter(grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein",Function, ignore.case = TRUE))
+  filter(grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein|symporter|porin",Function, ignore.case = TRUE))
 
 DEqMS.results_SAR11_ABC_seqs<- DEqMS.results_SAR11_ABC%>% 
   select(gene_callers_id, aa_sequence) %>% unique() %>% 
@@ -72,10 +71,15 @@ DEqMS.results_SAR11_ABC_seqs<- DEqMS.results_SAR11_ABC%>%
 seqinr::write.fasta(as.list(DEqMS.results_SAR11_ABC_seqs$aa_sequence), names=DEqMS.results_SAR11_ABC_seqs$gene_callers_id, 
                     as.string=FALSE, file.out="data/SAR11_ABC.fa")
 
+#transfer the files to LISC and run psiblast against TCDB
+# module load ncbiblast
+# makeblastdb -in $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1B_2_3A.fasta -out $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1B_2_3A -dbtype prot
+# grep ">" $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1B_2_3A.fasta | sed 's/>//g' - | sed 's/ /'$'\t''/' - | sed 's/ /'$'\t''/' - > $WORKDIR/11_PROTEIN/TCDB_class/TCDB_1B_2_3A.ann
+# psiblast -db $WORKDIR/11_PROTEIN/TCDB_class/TCDB_2_3_A -query $WORKDIR/11_PROTEIN/TCDB_class/SAR11_ABC.fa -outfmt "6 qseqid sseqid pident length evalue bitscore" -out $WORKDIR/11_PROTEIN/TCDB_class/SAR11_ABC_psiblastp.out -num_threads 4
 
 
 #import psiblast results
-TCDB_annotation<- read.csv("data/TCDB_2_3_A.ann", h=F, sep="\t", fill=TRUE)
+TCDB_annotation<- read.csv("data/TCDB_1B_2_3A.ann", h=F, sep="\t", fill=TRUE)
 names(TCDB_annotation)<- c("sseqid", "TCID", "Annotation")
 
 SAR11_ABC_annotations<- read.table("data/SAR11_ABC_psiblastp.out", col.names =c("gene_callers_id","sseqid","pident","length","evalue","bitscore")) %>% 
@@ -89,7 +93,7 @@ SAR11_ABC_annotations<- read.table("data/SAR11_ABC_psiblastp.out", col.names =c(
 #merge annotation
 DEqMS.results_SAR11_ABC_ann<- DEqMS.results_SAR11_ABC %>% 
   left_join(SAR11_ABC_annotations, by = "gene_callers_id") %>% 
-  mutate(Function=Annotation) %>%
+  mutate(Function=Annotation) %>% 
   select(-c("sseqid","pident","length","evalue","bitscore", "TCID", "Annotation")) %>% 
   mutate(Function=case_when(is.na(Function)~gsub("\\[.*|MULTISPECIES:","",blastp_ann), 
                             TRUE~Function)) %>% 
@@ -99,40 +103,48 @@ DEqMS.results_SAR11_ABC_ann<- DEqMS.results_SAR11_ABC %>%
                             grepl("spermidine",Function,ignore.case = TRUE)~ "Spermidine/putrescine binding protein",
                             grepl("glycine",Function,ignore.case = TRUE)~ "Glycine betaine binding protein",
                             grepl("Iron",Function,ignore.case = TRUE)~ "Iron binding protein",
-                            grepl("binding",Function,ignore.case = TRUE)~ "Putative periplasmic binding proteins",
-                            TRUE ~Function))
+                            grepl("ABC",Function)~ "ABC transporter substrate-binding protein",
+                            grepl("TRAP",Function)~"TRAP transporter substrate-binding protein DctP",
+                            TRUE ~Function)) %>% 
+  mutate(Function=gsub("OS=.*","",Function))
 
 
 DEqMS.results_SAR11_total_by_frac<- DEqMS.results_SAR11 %>% 
-  filter(!grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein",Function, ignore.case = TRUE)) %>% 
+  filter(!grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein|symporter",Function, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_SAR11_ABC_ann) %>% 
   group_by(Enr.frac,  Function) %>% 
   summarize(p=n()) %>% 
   spread(Enr.frac, p) %>% 
   mutate(Cells=case_when(is.na(Cells)~0, TRUE~Cells),
-         EVs=case_when(is.na(EVs)~0, TRUE~EVs)) %>% View()
+         BEVs=case_when(is.na(BEVs)~0, TRUE~BEVs)) %>% View()
 
 #plot results
 DEqMS.results_SAR11.p<- DEqMS.results_SAR11 %>% 
-  filter(!grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein",Function, ignore.case = TRUE)) %>% 
+  filter(!grepl("ABC|substrate-binding|solute-binding|Periplasmic binding protein|symporter|porin",Function, ignore.case = TRUE)) %>% 
   rbind(DEqMS.results_SAR11_ABC_ann) %>% 
-  mutate(Function=case_when(grepl("Porin",Function, ignore.case = TRUE)~"Porin", 
-                                grepl("NusA",Function, ignore.case = TRUE) ~"Transcription factor NusA",
-                                grepl("SUF system",Function, ignore.case = TRUE) ~"FeS cluster assembly",
-                                grepl("PBP",Function, ignore.case = TRUE) ~"Phosphate binding protein PstS",
-                                TRUE~Function)) %>% 
+   mutate(Function=case_when(grepl("Porin",Function, ignore.case = TRUE)~"Porin", 
+                                 grepl("NusA",Function, ignore.case = TRUE) ~"Transcription factor NusA",
+                                 grepl("SUF system",Function, ignore.case = TRUE) ~"FeS cluster assembly",
+                                 grepl("PBP",Function, ignore.case = TRUE) ~"Phosphate binding protein PstS",
+                                 grepl("TRAP",Function)~"TRAP transporter substrate-binding protein DctP",
+                                 TRUE~Function)) %>% 
   group_by(Enr.group, Enr.frac, Function) %>% 
   summarize(log2fold_mean = mean(logFC), log2fold_median = median(logFC), log2fold_min = min(logFC), log2fold_max = max(logFC), log2fold_se = se(logFC), count=n())
 
 total_SAR11_prot<- DEqMS.results_SAR11.p %>% group_by(Enr.frac,Enr.group) %>% summarize(Total_p=sum(count))
 
-DEqMS.results_SAR11.p %>%
-  filter(Function %in% c(DEqMS.results_SAR11.p %>% 
-                               filter(count>1 & Enr.frac=="EVs") %>% 
-                               pull(Function))) %>% 
+InterPro_functions<- DEqMS.results_SAR11.p %>% 
+  filter(count>2 & Enr.frac=="BEVs") %>% 
+  pull(Function) %>% unique()
+
+DEqMS.results_SAR11.p %>% filter(Function %in% InterPro_functions) %>% 
   left_join(total_SAR11_prot, by =c("Enr.frac", "Enr.group")) %>% 
   mutate(Enr.group = factor(Enr.group, levels =c("WEST","GYRE", "TRAN")),
-         Prop=count/Total_p) %>% 
+         Prop=count/Total_p,
+         Function=factor(Function, levels=rev(c("ABC transporter substrate-binding protein", "TRAP transporter substrate-binding protein DctP", "Phosphate binding protein PstS",
+                                            "Cation/acetate symporter ActP-1 ", "Porin", "Archaeal/bacterial/fungal rhodopsins",
+                                            "isocitrate dehydrogenase (NADP(+))","protease modulator HflC", "Transcription factor NusA")))
+         ) %>% 
   ggplot(aes(y=Function , x=log2fold_mean, fill = Enr.group, label = count))+ 
   geom_point(aes(size = Prop), shape =21)+
   geom_text(size = 5, nudge_y = -0.2)+
