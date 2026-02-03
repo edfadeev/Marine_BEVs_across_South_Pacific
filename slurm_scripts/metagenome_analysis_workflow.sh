@@ -55,6 +55,59 @@ sbatch -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,REPO_DIR=$REPO_DI
 
 
 ################################################################
+#Functional annotation of all genes using InterProScan
+################################################################
+#export all 
+anvi-get-sequences-for-gene-calls --contigs-db $WORKDIR/03_CONTIGS/$PROJECT-contigs.db \
+--get-aa-sequences --output-file $WORKDIR/03_CONTIGS/$PROJECT-genes.faa
+
+#split the proteins fasta into chucks
+mkdir $WORKDIR/03_CONTIGS/temp_fasta
+
+awk 'BEGIN {n=0;} /^>/ {if(n%1000==0){file=sprintf("./03_CONTIGS/temp_fasta/SO289-genes.fa_chunk%d",n);} print >> file; n++; next;} \
+{ print >> file; }' < $WORKDIR/03_CONTIGS/$PROJECT-genes.faa
+
+#create chunks list
+ls $WORKDIR/03_CONTIGS/temp_fasta/SO289-genes.fa_chunk* > $WORKDIR/03_CONTIGS/chunk.list
+
+#check how many chunck are there 
+n_chunks=$(awk 'END { print NR }' ./03_CONTIGS/chunk.list)
+
+mkdir $WORKDIR/03_CONTIGS/temp_InterPro
+
+#define databases 
+DATABASES=("NCBIfam" "Pfam" "PANTHER" "SUPERFAMILY")
+
+for db in "${DATABASES[@]}"
+do
+#adjust array and run sbatch
+sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,db=$db --job-name "run_interproscan" $REPO_DIR/slurm_scripts/run_interproscan_genes.sh
+done
+
+#combine chuncks of annotations
+for db in "${DATABASES[@]}"
+do
+dbs_with_stats=("NCBIfam" "Pfam" "PANTHER" "TIGRFAM" "SUPERFAMILY")
+
+if [[ ${dbs_with_stats[@]} =~ $db ]]; 
+then 
+cat $WORKDIR/03_CONTIGS/temp_InterPro/*_${db}_interpro-output.tsv |
+awk 'BEGIN{FS=OFS="\t"};$9 < 0.001' -|
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, $4, $5, $6}' - > $WORKDIR/03_CONTIGS/$PROJECT-genes_${db}.tsv
+
+else 
+cat $WORKDIR/03_CONTIGS/temp_InterPro/*_${db}_interpro-output.tsv |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, $4, $5, $6}' - > $WORKDIR/03_CONTIGS/$PROJECT-genes_${db}.tsv
+
+fi
+done
+
+
+
+
+################################################################
 #generate reference protein fasta for PD
 ################################################################
 mkdir $WORKDIR/11_PROTEIN
@@ -187,6 +240,27 @@ cat $WORKDIR/11_PROTEIN/temp_blastp/*_bacterial_refseq_annotated.tsv |
 awk 'BEGIN{FS=OFS="\t"};$3 > 25 && $5 < 0.001 && $6 > 50 {print $1, $2, $7, $8, $11}' - |
 awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","blastp_ann","blastp_species","blastp_taxa"}; \
 {print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_blastp_refseq.txt
+
+#run blastp uniref90
+sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_uniprot.sh
+
+#merge output from all chuncks
+cat $WORKDIR/11_PROTEIN/temp_blastp/*_uniref90_blastp.out |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","pident","length","evalue","bitscore"}; \
+{print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_uniref90.out
+
+
+#run blastp on swissprot
+sbatch --array=0-$n_chunks -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT --job-name "run_blastp_uniprot" $REPO_DIR/slurm_scripts/run_blastp_sprot.sh
+
+#merge output from all chuncks
+cat $WORKDIR/11_PROTEIN/temp_blastp/*_uniprot_sprot_blastp.out |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","blastp_acc","pident","length","evalue","bitscore"}; \
+{print}' - > $WORKDIR/11_PROTEIN/$PROJECT-detected_proteins_uniprot_sprot_blastp.out
+
+#generate annotations table
+grep ">" /lisc/scratch/mirror/uniprot/2025_03/uniprot_sprot/uniprot_sprot > 11_PROTEIN/swissprot_description.txt
+
 
 ################################
 #Run dbcan (identify CAZymes)

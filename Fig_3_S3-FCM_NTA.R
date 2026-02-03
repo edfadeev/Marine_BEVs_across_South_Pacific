@@ -15,16 +15,18 @@ source("source/ggplot_parameters.R")
 source("source/process_NTA_results.R")
 
 tidy_data_filt_total<- tidy_data_filt %>% 
-  group_by(Station_ID) %>% 
+  group_by(Region) %>% 
   summarize(Part.n=n())
 
 #plot size distribution
 EVs_size.p<- tidy_data_filt %>% left_join(tidy_data_filt_total, by="Station_ID") %>% 
-  ggplot(aes(x=Station_ID, y=Size.nm, group=Station_ID, fill=Region)) +
-  #geom_violin(outliers = TRUE)+ 
+  ggplot(aes(x=Region, y=Size.nm, group=Region, fill=Region)) +
+  #geom_violin(draw_quantiles = c(0.25, 0.75))+
   geom_boxplot(outliers = FALSE)+
   #geom_text(aes(label=Part.n), y= 20)+
   #ylim(0,250)+
+  #geom_hline(yintercept =70)+
+  #geom_hline(yintercept =130)+
   scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2",  "#D55E00"))+
   theme_EF+
   theme(axis.text.x= element_blank(),
@@ -85,6 +87,9 @@ EVs_total_conc.p<- EVs_total_conc %>% ggplot(aes(x= Station_ID, y = Mean.conc, g
 ###########################################
 #Cell counts
 ###########################################
+#process FCM output
+source("source/process_FCM_results.R")
+
 #import cell counts
 counts_all<- read.table("data/FCM_cell_counts.txt") %>% 
                 mutate(Cell_conc=Cell_conc*1000,
@@ -111,22 +116,16 @@ FCM_NTA_plot<- counts_all %>% select("Region","Station_ID", "Type", "Cell_conc")
   dplyr::rename(Concentration=Cell_conc) %>% 
   rbind(EVs_total_conc %>% select("Region","Station_ID", "Type", "Mean.conc") %>% 
           dplyr::rename(Concentration=Mean.conc)) %>% 
-  mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP"))) %>% 
-  ggplot(aes(x= Station_ID, y = Concentration, fill = Region, group =Type))+
-  geom_point(aes(shape = Type),colour = "black",  size =6)+ 
-  geom_point(aes(colour = Region, shape = Type), size =5)+ 
-  labs(y="Concentration (# L-1)", x = "Station")+
+  mutate(Region = factor(Region, levels =c("WEST","GYRE", "TRAN","UP"))) %>%
+  ggplot(aes(x= Type, y = Concentration, fill = Region, group =interaction(Region,Type)))+
+  geom_boxplot()+
+  labs(y="Concentration (# L-1)", x = "Region")+
   scale_fill_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
   scale_colour_manual(values = c("#009E73", "#F0E442", "#0072B2", "#D55E00"))+
-  scale_pattern_manual(values=c('stripe', 'wave'))+
-  scale_shape_manual(values=c(22,24))+
-  facet_grid(cols=vars(Region),scales="free",space="free_x",switch="x")+
+  facet_grid(~Region)+
   scale_y_log10()+
   theme_EF+
-  theme(axis.text.x= element_blank(),
-        axis.title.x= element_blank(),
-        axis.ticks.x = element_blank(),
-        legend.position = "bottom", 
+  theme(legend.position = "bottom", 
         plot.title = element_text(hjust = 0.5))
 
 #save the plot
