@@ -1,6 +1,15 @@
 require(dplyr)
 require(tibble)
 require(stringr)
+<<<<<<< HEAD
+=======
+require(ggplot2)
+require(DEqMS)
+require(vegan)
+
+#load ggplot theme and colours
+source("source/ggplot_parameters.R")
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549
 
 ############################
 #import metadata
@@ -52,9 +61,12 @@ protein_abund<- read.table("data/SO289_clust99_RC_PeptideGroups.txt", sep ="\t",
   tibble::column_to_rownames("gene_callers_id")%>% 
   mutate(across(where(is.numeric), ~na_if(., 0)))
 
+<<<<<<< HEAD
 
 write.table(protein_abund, "data/protein_abund.txt", col.names = TRUE, row.names=TRUE, quote = FALSE)
 
+=======
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549
 ############################
 #Protein annotations
 ############################
@@ -142,6 +154,7 @@ protein_taxonomy_combined<- protein_taxonomy_kaiju %>%
   left_join(protein_taxonomy_blastp %>% select(-starts_with("blastp")), by = c("gene_callers_id")) %>% 
   rbind(protein_taxonomy_kaiju %>% filter(!NCBI_taxID %in% c(0,1,2)) %>% select(-c("NCBI_taxID")))
 
+<<<<<<< HEAD
 protein_taxonomy<- protein_taxonomy_combined %>% 
   filter(Phylum=="NA"|is.na(Phylum)) %>% select(gene_callers_id, Domain) %>% 
   left_join(protein_taxonomy_blastp, by =c("gene_callers_id", "Domain")) %>% 
@@ -150,11 +163,65 @@ protein_taxonomy<- protein_taxonomy_combined %>%
   mutate(Phylum=case_when(Phylum=="NA"~ paste0(Domain, "_uncl"), TRUE ~ Phylum))
 
 write.table(protein_taxonomy, "data/protein_taxonomy.txt", col.names = TRUE, row.names=FALSE, quote = FALSE, sep ="\t")
+=======
+rm(protein_taxonomy_blastp, protein_taxonomy_kaiju, protein_taxonomy_nr, protein_taxonomy_refseq)
+rm(protease_annotation_df, blastp_hits_df, CAZYme_annotation_df, interpro_annotations_df)
+############################
+#protein localization estimates
+############################
+protein_localization <- read.table("data/SO289-detected_proteins_deeploc.txt", h=T, sep ="\t") %>% 
+  mutate(gene_callers_id = as.character(gene_callers_id))
+
+############################
+#Explore viral proteins in BEVs fraction
+############################
+vir_gcids_taxa<- protein_taxonomy %>% 
+  filter(grepl("Viruses", Domain))%>% pull(gene_callers_id)
+
+vir_gcids_ann <-protein_annotations %>% 
+  filter(grepl("phage|virus|capsid|Tail sheath",Pfam_ann, ignore.case = TRUE)|
+           grepl("phage|virus|capsid|Tail sheath",InterPro_ann, ignore.case = TRUE)|
+           NCBIfam_acc %in% c("TIGR01554", "TIGR02126", "TIGR01543")) %>% pull(gene_callers_id)
+vir_gcids<- c(vir_gcids_taxa, vir_gcids_ann)
+
+#summarize how many viral proteins per sample
+viral_prot_per_sample <- protein_abund[vir_gcids,] %>%
+  reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
+  filter(Abund>0) %>% 
+  left_join(samples_df, by = "Sample_ID") %>% 
+  group_by(Region,Station_ID,Fraction) %>% 
+  summarize(N_prot=n()) %>% 
+  tidyr::spread(Fraction, N_prot)
+
+############################
+#summarize number of non viral proteins
+############################
+protein_abund_no_vir<-protein_abund[!row.names(protein_abund)%in%vir_gcids,]
+
+protein_abund_per_sample <- protein_abund_no_vir %>%
+  reshape2::melt(variable.name = "Sample_ID", value.name = "Abund") %>% 
+  filter(Abund>0) %>% 
+  left_join(samples_df, by = "Sample_ID") %>% 
+  group_by(Region,Station_ID,Fraction) %>% 
+  summarize(N_prot=n()) 
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549
 
 rm(blastp_hits_df, protein_taxonomy_blastp, protein_taxonomy_combined, protein_taxonomy_kaiju, protein_taxonomy_nr, protein_taxonomy_refseq)
 
 
+<<<<<<< HEAD
 #print session info and clean the workspace
 sessionInfo()
 rm(list = ls())
 gc()
+=======
+
+############################
+#Transform abundances
+############################
+#log2 transformation of protein abundances
+protein_abund.log2 <- log2(as.matrix(protein_abund_no_vir))
+
+#median normalization of the data
+prot.dat.log2_norm = equalMedianNormalization(protein_abund.log2)
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549

@@ -12,6 +12,7 @@ se <- function(x, na.rm=FALSE) {
   sqrt(var(x)/length(x))
 }
 ############################
+<<<<<<< HEAD
 #import normalized protein abundance table and metadata
 ############################
 samples_df<- read.table("data/samples_meta.txt", header = TRUE) %>% 
@@ -25,6 +26,51 @@ prot.dat.log2_norm<- read.table("data/protein_abund_log2_norm.txt",  header = TR
 
 protein_metadata<- read.table("data/protein_metadata.txt",  header = TRUE)%>% 
   mutate(gene_callers_id=as.character(gene_callers_id))
+=======
+#Protein overlap between fractions
+############################
+prot_overlap_ls <- lapply(paste0(samples_df$Station_ID,"_"), function(s){
+  st<- protein_abund_no_vir %>% rownames_to_column("gene_callers_id") %>% 
+    dplyr::select(gene_callers_id, starts_with(match=s)) %>% 
+    reshape2::melt(value.name = "Abund") %>% 
+    mutate(Fraction = case_when(grepl("Cells", variable)~ "Cells", grepl("EVs", variable)~ "EVs")) %>% 
+    filter(Abund>0)
+  
+  overlap <- VennDiagram::calculate.overlap(list("Cells"= st %>% filter(Fraction =="Cells") %>% dplyr::select(gene_callers_id) %>%  pull(), 
+                                                 "EVs"=st %>% filter(Fraction =="EVs") %>% dplyr::select(gene_callers_id) %>%  pull()))
+  
+  return(data.frame(Station_ID = s, 
+                    Cells_prot = length(overlap$a1),
+                    EVs_prot = length(overlap$a2),
+                    Shared_prot = length(overlap$a3)))
+})
+
+prot_overlap<- bind_rows(prot_overlap_ls) %>% 
+  mutate(EVs_shared_prop = round(Shared_prot/EVs_prot,2)) %>% unique()
+
+
+prot_overlap %>% 
+  filter(Shared_prot>0) %>% 
+  summarize(Min=min(EVs_shared_prop),
+            Max=max(EVs_shared_prop),
+            Mean = mean(EVs_shared_prop),
+            SE = se(EVs_shared_prop))
+
+############################
+#dissimilarity of Cells vs. BEV proteomes
+############################
+#replace NAs with 0 for dissimilarity calculation
+prot.dat.MDS<- prot.dat.log2_norm
+
+prot.dat.MDS[is.na(prot.dat.MDS)]<- 0
+prot.dat.MDS<- prot.dat.MDS[!rowSums(prot.dat.MDS)==0,] # remove proteins that were not observed in any cellular sample
+
+
+#test whether the differences between the runs are significant
+protein_dist_matrix <- vegdist(t(prot.dat.MDS), method = "euclidean",na.rm = TRUE)
+
+adonis2(protein_dist_matrix ~ Fraction, samples_df,permutations=999)
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549
 
 protein_taxonomy<- read.table("data/protein_taxonomy.txt",  header = TRUE, sep ="\t") %>% 
   mutate(gene_callers_id=as.character(gene_callers_id))
@@ -49,6 +95,11 @@ contrast <-  makeContrasts(contrasts="EVs-Cells",levels=design)
 EV_sample_IDs<- samples_df %>% filter(Fraction =="EVs") %>% pull(Sample_ID)
 Cell_sample_IDs<- samples_df %>% filter(Fraction =="Cells") %>% pull(Sample_ID)
 
+<<<<<<< HEAD
+=======
+prot.dat.log2_norm.filter<- prot.dat.log2_norm[, c(EV_sample_IDs, Cell_sample_IDs)]
+
+>>>>>>> e48d2ba4b277485019716045c8d9a68ab236f549
 # Filter proteins that were observed in at least two samples in each fraction
 prot.dat.log2_norm.filter <- prot.dat.log2_norm[rowSums(!is.na(prot.dat.log2_norm[, c(EV_sample_IDs)]))>1 &
                                                          rowSums(!is.na(prot.dat.log2_norm[, c(Cell_sample_IDs)]))>1,]

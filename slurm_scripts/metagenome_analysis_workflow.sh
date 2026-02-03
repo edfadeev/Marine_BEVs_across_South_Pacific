@@ -21,7 +21,7 @@ screen -S SO289_anvio
 module load conda
 
 #Activate conda environment:
-conda activate anvio-dev
+conda activate anvio-8
 
 #Define working directory
 WORKDIR=/lisc/scratch/oceanography/efadeev/SO289/SO289_coassembly/ && cd $WORKDIR
