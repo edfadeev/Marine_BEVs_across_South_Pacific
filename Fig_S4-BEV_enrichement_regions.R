@@ -181,7 +181,7 @@ DEqMS_results %>% filter(Enr.frac!="Not.enr") %>%
   left_join(protein_metadata, by="gene_callers_id") %>% 
   mutate(deeploc=case_when(deeploc=="Cell wall & surface"~"Extracellular", TRUE~ deeploc)) %>% 
   select(names(DEqMS_results), Phylum, Class,Order,Family,Genus, deeploc, starts_with("InterPro_"), starts_with("NCBIfam_"),
-         starts_with("Pfam_"),Number.of.PSMs,Number.of.Unique.Peptide,Number.of.Razor.Peptide,Length, aa_sequence) %>% 
+         starts_with("Pfam_"),Number.of.PSMs,Number.of.Unique.Peptide,Number.of.Razor.Peptide,Length,Oxidation, aa_sequence) %>% 
   openxlsx::write.xlsx(., colNames = TRUE, 
                        file= 'Tables/Table_S4-DEqMS_regions.xlsx')
 

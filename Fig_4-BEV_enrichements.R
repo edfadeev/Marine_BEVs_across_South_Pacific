@@ -200,18 +200,18 @@ DEqMS_results_Order_tax %>%
                          is.na(Order) & is.na(Class)~ paste0(Phylum,"_uncl"),TRUE~Order),
          Class=case_when(is.na(Class)~ paste0(Phylum,"_uncl"),TRUE~Class)) %>% 
   mutate(Ratio=BEVs/Cells,
-         Taxa=case_when(BEVs>4&Cells>4&Ratio!=1 ~ Order, TRUE~"Other taxa"),
-         Class=case_when(BEVs>4&Cells>4&Ratio!=1 ~ Class, TRUE~"Other taxa")) %>% 
+         Taxa=case_when(BEVs>2&Cells>2 ~ Order, TRUE~"Other taxa"),
+         Class=case_when(BEVs>2&Cells>2 ~ Class, TRUE~"Other taxa")) %>% 
   mutate(Taxa=factor(Taxa, levels=c(DEqMS_results_Order_tax %>% filter(!is.na(Order)) %>% pull(Order) %>% unique(), 
-                                    "Alphaproteobacteria_uncl","Gammaproteobacteria_uncl", "Other taxa" )),
-         Class=factor(Class, levels=c(DEqMS_results_Order_tax %>% filter(!is.na(Class)) %>% pull(Class) %>% unique(), 
-                                    "Other taxa" ))) %>% 
+                                    "Alphaproteobacteria_uncl", "Gammaproteobacteria_uncl", "Bacteroidota_uncl", "Other taxa" )),
+         Class=factor(Class, levels=c(DEqMS_results_Order_tax %>% filter(!is.na(Class)) %>% pull(Class) %>% unique() %>% sort(), 
+                                      "Bacteroidota_uncl", "Other taxa" ))) %>% 
   mutate(Taxa=gsub("Candidatus ","", Taxa)) %>% 
   ggplot(aes(x=Cells, y= BEVs, colour= Class, label = Taxa))+
   geom_point(size=5)+
-  geom_abline(slope = 1, intercept = 0)+
   geom_label_repel(color = "red", nudge_x = .5, nudge_y = 1.5) +
-  scale_colour_manual(values = c(tol21rainbow, "gray50"))+
+  geom_abline(slope = 1, intercept = 0, linetype = 2, alpha = 0.8)+
+  scale_colour_manual(values = c(rev(tol21rainbow)))+
   labs(x="Enriched proteins in cells", y = "Enriched proteins in BEVs")+
   theme_EF+
   theme(legend.position = "bottom")
@@ -220,8 +220,8 @@ DEqMS_results_Order_tax %>%
 ggsave("./Figures/prot_cells_BEVs_ratio.pdf",
        plot = last_plot(),
        units = "mm",
-       width = 90,
-       #height = 90, 
+       width = 180,
+       height = 180, 
        scale = 2,
        dpi = 300)
 
