@@ -223,7 +223,6 @@ nsaf_mat |>
   ggplot(aes(x = Station_ID, y = Total, fill = Domain)) +
   geom_col() +
   facet_grid(~Fraction, scales = "free_y") + theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   labs(y = "Total Normalized Spectral Abundance Factor (NSAF)", x = "Station ID") +
   scale_fill_manual(values = c("Bacteria" = "#1f78b4",  "Archaea" = "#e31a1c", "Viruses" = "#ff7f00", "Unassigned" = "gray50")) +
   theme(legend.title = element_blank()) +
@@ -233,7 +232,18 @@ nsaf_mat |>
     inherit.aes = FALSE,
     vjust = 0,
     size = 3
-  )
+  )+
+  theme_EF+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#save the plot
+ggsave("./Figures/Fig_S4_metaP_tax_comp.pdf",
+       plot = last_plot(),
+       units = "mm",
+       width = 180,
+       height = 90, 
+       scale = 2,
+       dpi = 300)
 
 ############################
 #Exclude non-bacterial proteins and export filtered abundance tables for downstream analyses
