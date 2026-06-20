@@ -1,0 +1,257 @@
+{
+    "max_threads": "",
+    "config_version": "3",
+    "workflow_name": "metagenomics",
+    "samples_txt": "SO289_samples.txt",
+    "references_mode": "true",
+    "fasta_txt": "fasta.txt",
+    "all_against_all": "",
+    "kraken_txt": "",
+    "collections_txt": "",
+    "output_dirs": {
+        "LOGS_DIR": "00_LOGS",
+        "QC_DIR": "01_QC",
+        "FASTA_DIR": "02_FASTA",
+        "CONTIGS_DIR": "03_CONTIGS",
+        "MAPPING_DIR": "04_MAPPING",
+        "PROFILE_DIR": "05_ANVIO_PROFILE",
+        "MERGE_DIR": "06_MERGED",
+        "TAXONOMY_DIR": "08_TAXONOMY",
+        "SUMMARY_DIR": "09_SUMMARY",
+        "SPLIT_PROFILES_DIR": "10_SPLIT_PROFILES"
+    },
+    "gzip_fastqs": {
+        "run": true,
+        "threads": 1
+    },
+    "gunzip_fasta": {
+        "threads": 1
+    },
+    "iu_filter_quality_minoche": {
+        "run": true,
+        "--ignore-deflines": true,
+        "--visualize-quality-curves": "",
+        "--limit-num-pairs": "",
+        "--print-qual-scores": "",
+        "--store-read-fate": "",
+        "threads": 64
+    },
+    "iu_gen_configs": {
+        "--r1-prefix": "",
+        "--r2-prefix": "",
+        "threads": 10
+    },
+    "gen_qc_report": {
+        "threads": 10
+    },
+    "merge_fastqs_for_co_assembly": {
+        "threads": ""
+    },
+    "merge_fastas_for_co_assembly": {
+        "threads": ""
+    },
+    "krakenuniq": {
+        "threads": 32,
+        "--gzip-compressed": true,
+        "additional_params": "",
+        "run": false,
+        "--db": "/home/user/fadeev/anvio-resources/minikraken_db"
+    },
+    "krakenuniq_mpa_report": {
+        "threads": "32"
+    },
+    "megahit": {
+        "--min-contig-len": 1000,
+        "--memory": 0.9,
+        "threads": 128,
+        "run": false,
+        "--min-count": "",
+        "--k-min": "29",
+        "--k-max": "",
+        "--k-step": "",
+        "--k-list": "",
+        "--no-mercy": "",
+        "--no-bubble": "",
+        "--merge-level": "",
+        "--prune-level": "",
+        "--prune-depth": "",
+        "--low-local-ratio": "",
+        "--max-tip-len": "",
+        "--no-local": "",
+        "--kmin-1pass": "",
+        "--presets": "",
+        "--mem-flag": "",
+        "--use-gpu": "",
+        "--gpu-mem": "",
+        "--keep-tmp-files": "",
+        "--tmp-dir": "$TMPDIR",
+        "--continue": "",
+        "--verbose": ""
+    },
+    "anvi_script_reformat_fasta": {
+        "run": true,
+        "--prefix": "{group}",
+        "--simplify-names": true,
+        "--keep-ids": "",
+        "--exclude-ids": "",
+        "--min-len": "",
+        "--seq-type": "NT",
+        "threads": 10
+    },
+    "anvi_gen_contigs_database": {
+        "--project-name": "{group}",
+        "--description": "",
+        "--skip-gene-calling": "",
+        "--ignore-internal-stop-codons": "",
+        "--skip-mindful-splitting": "",
+        "--contigs-fasta": "",
+        "--split-length": "",
+        "--kmer-size": "",
+        "--skip-predict-frame": "",
+        "--prodigal-translation-table": "",
+        "threads": 32
+    },
+    "annotate_contigs_database": {
+        "threads": ""
+    },
+    "anvi_import_taxonomy_for_genes": {
+        "threads": ""
+    },
+    "anvi_get_sequences_for_gene_calls": {
+        "threads": ""
+    },
+    "reformat_external_gene_calls_table": {
+        "threads": ""
+    },
+    "reformat_external_functions": {
+        "threads": ""
+    },
+    "import_external_functions": {
+        "threads": ""
+    },
+    "export_gene_calls_for_centrifuge": {
+        "threads": ""
+    },
+    "centrifuge": {
+        "threads": 32,
+        "run": false,
+        "db": "/home/user/fadeev/anvio-resources/centrifuge_tool/db/p+h+v"
+    },
+    "anvi_run_hmms": {
+        "run": true,
+        "threads": 32,
+        "--also-scan-trnas": true,
+        "--installed-hmm-profile": "Bacteria_71",
+        "--hmm-profile-dir": ""
+    },
+    "anvi_run_kegg_kofams": {
+        "run": true,
+        "threads": 32,
+        "--kegg-data-dir": "",
+        "--hmmer-program": "",
+        "--keep-all-hits": "",
+        "--log-bitscores": "",
+        "--just-do-it": ""
+    },
+    "anvi_run_ncbi_cogs": {
+        "run": true,
+        "threads": 32,
+        "--cog-data-dir": "",
+        "--temporary-dir-path": "",
+        "--search-with": ""
+    },
+    "anvi_run_scg_taxonomy": {
+        "run": true,
+        "threads": 32,
+        "--scgs-taxonomy-data-dir": ""
+    },
+    "anvi_run_pfams": {
+        "run": true,
+        "--pfam-data-dir": "",
+        "threads": 32
+    },
+    "import_krakenuniq_taxonomy": {
+        "--min-abundance": "",
+        "threads": ""
+    },
+    "bowtie_build": {
+        "additional_params": "--large-index",
+        "threads": 32
+    },
+    "bowtie": {
+        "additional_params": "--no-unal",
+        "threads": 64
+    },
+    "samtools_view": {
+        "additional_params": "-F 4",
+        "threads": ""
+    },
+    "anvi_init_bam": {
+        "threads": 10
+    },
+    "import_percent_of_reads_mapped": {
+        "run": true,
+        "threads": ""
+    },
+    "remove_short_reads_based_on_references": {
+        "delimiter-for-iu-remove-ids-from-fastq": " ",
+        "dont_remove_just_map": "",
+        "references_for_removal_txt": "",
+        "threads": 10
+    },
+    "anvi_profile": {
+        "threads": 8,
+        "--sample-name": "{sample}",
+        "--overwrite-output-destinations": "",
+        "--report-variability-full": "",
+        "--skip-SNV-profiling": "",
+        "--profile-SCVs": "",
+        "--description": "",
+        "--skip-hierarchical-clustering": "",
+        "--distance": "",
+        "--linkage": "",
+        "--min-contig-length": "2500",
+        "--min-mean-coverage": "",
+        "--min-coverage-for-variability": "",
+        "--cluster-contigs": "",
+        "--contigs-of-interest": "",
+        "--queue-size": "",
+        "--write-buffer-size-per-thread": "",
+        "--max-contig-length": ""
+    },
+    "anvi_merge": {
+        "--sample-name": "{group}",
+        "--overwrite-output-destinations": true,
+        "--description": "",
+        "--skip-hierarchical-clustering": true,
+        "--enforce-hierarchical-clustering": "",
+        "--distance": "",
+        "--linkage": "",
+        "threads": 4
+    },
+    "anvi_cluster_contigs": {
+        "run": false,
+        "--driver": [],
+        "--collection-name": "{driver}",
+        "--just-do-it": true,
+        "--additional-params-concoct": "",
+        "--additional-params-metabat2": "",
+        "--additional-params-maxbin2": "",
+        "--additional-params-dastool": "-S concoct,metabat2 --search-engine diamond",
+        "--additional-params-binsanity": "",
+        "threads": 32
+    },
+    "gen_external_genome_file": {
+        "threads": ""
+    },
+    "anvi_summarize": {
+        "additional_params": "-C metawrap",
+        "run": false,
+        "threads": 10
+    },
+    "anvi_split": {
+        "additional_params": "",
+        "run": "",
+        "threads": 10
+    }
+}

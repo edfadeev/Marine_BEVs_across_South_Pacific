@@ -1,0 +1,342 @@
+#Annotation workflow for detected proteins  
+
+#load modules
+module load Conda
+
+#Activate conda environment:
+conda activate /lisc/data/scratch/oceanography/efadeev/anvio_9
+
+#Define working directory
+WORKDIR=/lisc/data/scratch/oceanography/efadeev/SO289/SO289_coassembly/ && cd $WORKDIR
+PROJECT=SO289_marine_BEVs
+REPO_DIR=$WORKDIR/$PROJECT/anvio_workflow
+
+
+################################################################
+#Prepare contigs with identified proteins in the PD and run taxonomy
+################################################################
+OUTDIR="$WORKDIR/06_PROTEIN/"
+
+
+#list contigs that include the identified proteins
+awk 'NR==FNR {ids[$1]; next} FNR==1 {for(i=1;i<=NF;i++){if($i=="gene_callers_id") gci=i; if($i=="contig") ctg=i} next} ($gci in ids){print $ctg}' \
+    $OUTDIR/prot_IDs_masked.tsv $WORKDIR/03_CONTIGS/$PROJECT-gene-calls.txt | sort -u > $OUTDIR/contigs_of_interest.txt
+
+#get the contig sequences
+module load SeqKit/2.10.1
+
+seqkit grep -f $OUTDIR/contigs_of_interest.txt \
+-n -w 0 $WORKDIR/02_FASTA/$PROJECT/$PROJECT-contigs.fa > $OUTDIR/contigs_of_interest.fa
+
+#make a list of all the proteins in each contig
+awk -F'\t' '
+# file 1: contigs_of_interest.txt — load contig IDs into lookup array
+FNR==NR { ids[$1] = 1; next }
+
+# file 2: gene-calls.txt — find column indices from header
+FNR==1 {
+  for (i=1; i<=NF; i++) {
+    if ($i == "gene_callers_id")                                           gci = i
+    if ($i == "contig")                                                    ctg = i
+    if ($i == "amino_acid_sequence" || $i == "aa_sequence" ||
+        $i == "aa sequence"         || $i == "protein_sequence")           aas = i
+  }
+  if (!gci || !ctg || !aas) {
+    printf("ERROR: Required columns not found. gci=%d ctg=%d aas=%d\n",
+           gci, ctg, aas) > "/dev/stderr"
+    exit 1
+  }
+  next
+}
+
+# data rows: print FASTA entry for matching proteins
+($ctg in ids) {
+  id  = $ctg "_" $gci                          # contig_genecallersid
+  gsub(/[^A-Za-z0-9_.:-]/, "_", id)            # sanitize FASTA header
+  seq = $aas
+  gsub(/[[:space:]]/, "", seq)                  # strip whitespace from sequence
+  if (seq == "") next                           # skip if no sequence
+  print ">" id
+  for (i=1; i<=length(seq); i+=60)             # wrap at 60 chars (FASTA standard)
+    print substr(seq, i, 60)
+}
+' $OUTDIR/contigs_of_interest.txt $WORKDIR/03_CONTIGS/$PROJECT-gene-calls.txt > $OUTDIR/proteins_in_contigs.faa
+
+CATDB_PATH="/lisc/data/scratch/oceanography/efadeev/resources/ref_dbs/CAT_dbs/20241212_CAT_nr_website"
+
+sbatch -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR=$OUTDIR, DB_PATH=$DB_PATH --job-name "run_contigs_taxonomy" $REPO_DIR/slurm_scripts/run_CAT.sh
+
+
+################################################################
+#Prepare sequences of identified proteins in PD
+################################################################
+#make table of the sequences
+awk -F'\t' -v OFS='\t' '
+# file 1: gene_ids.txt — load protein IDs into a lookup set
+FNR==NR { ids[$1] = 1; next }
+
+# file 2: gene-calls.txt — find required columns from the header
+FNR==1 {
+  for (i=1; i<=NF; i++) {
+    if ($i == "id")                                           gci = i
+    if ($i == "ann")                                                    ctg = i
+    if ($i == "amino_acid_sequence" || $i == "aa_sequence" ||
+        $i == "aa sequence"         || $i == "protein_sequence")           aas = i
+  }
+ next
+}
+
+# data rows: print ID and sequence for matching proteins
+($gci in ids) {
+  # Choose the ID you want in column 1:
+  id = $gci                     # Option A: just gene_callers_id
+  # id = $ctg "_" $gci          # Option B: contig_gene_callers_id (uncomment if desired)
+
+  seq = $aas
+  gsub(/[[:space:]]/, "", seq)  # remove any whitespace inside the sequence
+  if (seq == "") next
+  print id, seq
+}
+' $OUTDIR/detected_protein_gcids.tsv $WORKDIR/03_CONTIGS/$PROJECT-gene-calls.txt > $OUTDIR/protein_seqs.txt
+
+#make fasta file with only the proteins identified in the PD analysis
+awk -F'\t' '{
+print ">" $1
+print $2
+}' $OUTDIR/protein_seqs.txt > $OUTDIR/detected_proteins.faa
+
+mkdir $OUTDIR/temp_fasta
+
+awk -v outdir="$OUTDIR" '
+  BEGIN { n=0; file="" }
+  /^>/ {
+    if (n % 1000 == 0) {
+      newfile = sprintf("%s/temp_fasta/prot.faa_chunk%d", outdir, n)
+      if (newfile != file && file != "") close(file)
+      file = newfile
+    }
+    print >> file
+    n++
+    next
+  }
+  { print >> file }
+' "$OUTDIR/detected_proteins.faa"
+
+
+#create chunks list
+ls $OUTDIR/temp_fasta/prot.faa_chunk* > $OUTDIR/chunk.list
+
+#check how many chunck are there 
+n_chunks=$(wc -l < "$OUTDIR/chunk.list")
+last_idx=$((n_chunks - 1))
+
+################################################################
+#Run taxonomic classification of the identified proteins
+################################################################
+OUTDIR_TAXA="$OUTDIR/temp_taxa"
+
+conda activate Kaiju-1.10.1
+
+mkdir $OUTDIR_TAXA
+
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,REPO_DIR=$REPO_DIR,OUTDIR=$OUTDIR,OUTDIR_TAXA=$OUTDIR_TAXA \
+--job-name "run_kaiju_taxonomy" $REPO_DIR/slurm_scripts/run_kaiju_nr.sh
+
+################################################################
+#Run functional annotation on the identified proteins
+################################################################
+OUTDIR_INTER="$OUTDIR/temp_InterPro"
+
+mkdir $OUTDIR_INTER
+
+#define databases 
+DATABASES=("NCBIfam" "Pfam" "Phobius")
+
+for db in "${DATABASES[@]}"
+do
+#adjust array and run sbatch
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR_INTER=$OUTDIR_INTER,OUTDIR=$OUTDIR,db=$db --job-name "run_interproscan" $REPO_DIR/slurm_scripts/run_interproscan.sh
+done
+
+#combine chunks of annotations
+for db in "${DATABASES[@]}"
+do
+dbs_with_stats=("NCBIfam" "Pfam")
+
+if [[ ${dbs_with_stats[@]} =~ $db ]]; 
+then 
+cat $OUTDIR_INTER/*_${db}_interpro-output.tsv | \
+awk -F'\t' '$10=="T" && $9 ~ /^[0-9.eE+-]+$/ && ($9+0) <= 1e-5' - \
+  | sort -t$'\t' -k1,1 -k9,9g \
+  | awk -F'\t' '
+      BEGIN { OFS="\t"; delta=0 }  # delta = allowed overlap in aa
+      function overlaps(s1,e1,s2,e2) { return (s1 <= e2 + delta) && (s2 <= e1 + delta) }
+      {
+        prot = $1
+        s = $7 + 0; e = $8 + 0
+        keep = 1
+        for (i=1; i<=n[prot]; i++) {
+          if (overlaps(s,e,S[prot,i],E[prot,i])) { keep=0; break }
+        }
+        if (keep) {
+          n[prot]++; S[prot,n[prot]] = s; E[prot,n[prot]] = e
+          print
+        }
+      }
+    ' - | \
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, $4, $5, $6}' - > $OUTDIR/proteins_${db}.tsv
+
+else 
+cat $OUTDIR_INTER/*_${db}_interpro-output.tsv |
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, $4, $5, $6}' - > $OUTDIR/proteins_${db}.tsv
+
+fi
+done
+
+#get InterPro annotations
+cat $OUTDIR_INTER/*_Pfam_interpro-output.tsv| \
+awk -F'\t' '$10=="T" && $9 ~ /^[0-9.eE+-]+$/ && ($9+0) <= 1e-5' - \
+  | sort -t$'\t' -k1,1 -k9,9g \
+  | awk -F'\t' '
+      BEGIN { OFS="\t"; delta=0 }  # delta = allowed overlap in aa
+      function overlaps(s1,e1,s2,e2) { return (s1 <= e2 + delta) && (s2 <= e1 + delta) }
+      {
+        prot = $1
+        s = $7 + 0; e = $8 + 0
+        keep = 1
+        for (i=1; i<=n[prot]; i++) {
+          if (overlaps(s,e,S[prot,i],E[prot,i])) { keep=0; break }
+        }
+        if (keep) {
+          n[prot]++; S[prot,n[prot]] = s; E[prot,n[prot]] = e
+          print
+        }
+      }
+    ' - | \
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, "InterPro", $12, $13}' - > $OUTDIR/proteins_InterPro.tsv
+
+#get GO annotations
+cat $OUTDIR_INTER/*_Pfam_interpro-output.tsv| \
+awk -F'\t' '$10=="T" && $9 ~ /^[0-9.eE+-]+$/ && ($9+0) <= 1e-5' - \
+  | sort -t$'\t' -k1,1 -k9,9g \
+  | awk -F'\t' '
+      BEGIN { OFS="\t"; delta=0 }  # delta = allowed overlap in aa
+      function overlaps(s1,e1,s2,e2) { return (s1 <= e2 + delta) && (s2 <= e1 + delta) }
+      {
+        prot = $1
+        s = $7 + 0; e = $8 + 0
+        keep = 1
+        for (i=1; i<=n[prot]; i++) {
+          if (overlaps(s,e,S[prot,i],E[prot,i])) { keep=0; break }
+        }
+        if (keep) {
+          n[prot]++; S[prot,n[prot]] = s; E[prot,n[prot]] = e
+          print
+        }
+      }
+    ' - | \
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","source","accession","function"}; \
+{print $1, "GO", $14,$15}' - > $OUTDIR/proteins_GOs.tsv
+
+
+#export COG20 annotations from anvio
+DATABASES=("COG20_FUNCTION" "COG20_CATEGORY")
+for db in "${DATABASES[@]}"
+do
+sbatch -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,db=$db --job-name "export_protein_annotation" $REPO_DIR/anvio_scripts/export_protein_annotations.sh
+done
+
+#subset to only relevant gene calls
+awk -F' ' 'NR==FNR{gcids[$1];next} $1 in gcids' $OUTDIR/prot_IDs_masked.tsv $WORKDIR/03_CONTIGS/$PROJECT-COG20_FUNCTION-functions.txt > $OUTDIR/detected_proteins_COG_functions.txt
+awk -F' ' 'NR==FNR{gcids[$1];next} $1 in gcids' $OUTDIR/prot_IDs_masked.tsv $WORKDIR/03_CONTIGS/$PROJECT-COG20_CATEGORY-functions.txt > $OUTDIR/detected_proteins_COG_categories.txt
+
+
+################################################################
+#Find hits to RefSeq and TCDB databases 
+################################################################
+OUTDIR_BLASTP="$OUTDIR/temp_blastp"
+
+mkdir $OUTDIR_BLASTP
+
+#run blastp
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR_BLASTP=$OUTDIR_BLASTP,OUTDIR=$OUTDIR --job-name "run_blastp" $REPO_DIR/slurm_scripts/run_blastp_refseq.sh
+
+#merge output from all chunks
+sort -t $'\t' -k1,1 -k5,5g -k6,6gr "$OUTDIR_BLASTP"/*_bacterial_refseq_annotated_mult.tsv |
+awk -F'\t' '
+  BEGIN{OFS="\t"; print "gene_callers_id","blastp_acc","blastp_ann","blastp_species","blastp_taxa"}
+  !seen[$1]++ {print $1, $2, $7, $8, $11}
+' > "$OUTDIR/detected_proteins_blastp_refseq.txt"
+
+OUTDIR_TCDB=$OUTDIR/temp_TCDB
+mkdir $OUTDIR_TCDB 
+
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR_TCDB=$OUTDIR_TCDB,OUTDIR=$OUTDIR --job-name "run_psiblast" $REPO_DIR/slurm_scripts/run_psiblast_TCDB.sh
+
+#merge output from all chunks
+
+awk 'BEGIN{FS=OFS="\t"}; NR==1{print "gene_callers_id","sseqid","pident","length","evalue","bitscore"}{print}' $OUTDIR_TCDB/*_TCDB_ref.out > $OUTDIR/detected_proteins_TCDB_hits.txt
+
+# Extract FASTA headers: split on first space into ID and description
+grep ">" $OUTDIR/TCDB_ref/TCDB_ref.fa | \
+  sed 's/^>//g' | \
+  awk 'BEGIN{OFS="\t"} { id=$1; sub(/^[^ ]+ /, ""); print id, $0 }' \
+  > $OUTDIR/TCDB_ref/TCDB_ref.ann
+
+
+# Join annotation to TCDB blast results on sseqid (col 2) = TCDB id (col 1)
+awk -F'\t' 'BEGIN{OFS="\t"}
+  NR==FNR { desc[$1]=$2; next }
+  { print $0, (($2 in desc) ? desc[$2] : "function") }' \
+  $OUTDIR/TCDB_ref/TCDB_ref.ann \
+  $OUTDIR/detected_proteins_TCDB_hits.txt >  $OUTDIR/detected_proteins_TCDB_ref.txt
+
+
+################################################################
+#Identify signal peptides in the  proteins
+################################################################
+OUTDIR_SIGNALP=$OUTDIR/temp_signalP
+mkdir $OUTDIR_SIGNALP 
+
+
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR_SIGNALP=$OUTDIR_SIGNALP,OUTDIR=$OUTDIR --job-name "run_signalp" $REPO_DIR/slurm_scripts/run_signalp.sh
+
+#merge
+grep -v "#" --no-filename $OUTDIR_SIGNALP/*/prediction_results.txt | \
+awk 'BEGIN { FS=OFS = "\t" }
+  NR == 1 {
+    print "gene_callers_id","Prediction","OTHER","SP(Sec/SPI)","LIPO(Sec/SPII)","TAT(Tat/SPI)","TATLIPO(Tat/SPII)","PILIN(Sec/SPIII)","CS_Position"
+  }
+  FNR == 1 { next }  # skip each file header
+  {
+    print $1,$2,$3,$4,$5,$6,$7,$8,$9
+  }
+' - > "$OUTDIR/detected_proteins_signalp_prob.txt"
+
+################################################################
+#Run subcellular localization prediction with DeepLocPro
+################################################################
+OUTDIR_DEEPLOC="$OUTDIR/temp_deeploc"
+
+mkdir $OUTDIR_DEEPLOC
+
+#adjust array and run sbatch
+sbatch --array=0-$last_idx -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,OUTDIR_DEEPLOC=$OUTDIR_DEEPLOC,OUTDIR=$OUTDIR --job-name "run_deeploc" $REPO_DIR/slurm_scripts/run_deeplocpro.sh
+
+#merge
+awk -F',' '
+  BEGIN { OFS = "\t" }
+  NR == 1 {
+    print "gene_callers_id","Localization","Cell_wall_surface","Extracellular",
+          "Cytoplasmic","Cytoplasmic_Membrane","Outer_Membrane","Periplasmic"
+  }
+  FNR == 1 { next }  # skip each file’s CSV header
+  {
+    # 1=index, 2=ACC, 3=Localization, 4=Cell wall & surface, 5=Extracellular,
+    # 6=Cytoplasmic, 7=Cytoplasmic Membrane, 8=Outer Membrane, 9=Periplasmic
+    print $2, $3, $4, $5, $6, $7, $8, $9
+  }
+' "$OUTDIR_DEEPLOC"/*/results_*.csv > "$OUTDIR/detected_proteins_deeploc_prob.txt"

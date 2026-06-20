@@ -1,0 +1,54 @@
+# Anvio workflow for metagenomes assembly
+
+################################
+# Define variables
+################################
+export PATH=/home/user/fadeev/anvio-resources/centrifuge_tool/bin:/home/user/fadeev/anvio-resources/DAS_Tool/:/home/user/fadeev/anvio-resources/pullseq/src/:/lisc/user/fadeev/anvio-resources/InterProScanParser:/home/user/fadeev/anvio-resources/KrakenTools:/lisc/user/fadeev/.local/bin:$PATH
+
+################################################################
+# Run metagenome assembly and annotation within Anvio
+################################################################
+#start screen
+screen -S SO289_anvio
+
+#load modules
+module load Conda
+
+#Activate conda environment:
+conda activate /lisc/data/scratch/oceanography/efadeev/anvio_9
+
+#Define working directory
+WORKDIR=/lisc/data/scratch/oceanography/efadeev/SO289/SO289_coassembly/ && cd $WORKDIR
+PROJECT=SO289_marine_BEVs
+REPO_DIR=$WORKDIR/$PROJECT/anvio_workflow
+
+#generate default workflow
+anvi-run-workflow -w metagenomics --get-default-config coassembly_config.json
+
+#adjust the workflow file manualy and plot it
+anvi-run-workflow -w metagenomics -c coassembly_config.json --save-workflow-graph
+
+#run workflow
+anvi-run-workflow -w metagenomics -c coassembly_config.json \
+--additional-params --cluster-config cluster_config.json --jobs 200 \
+--cluster "sbatch --output=$WORKDIR/slurm_out/%x-%j.out --partition={cluster.slurm_partition} \
+--mem={cluster.mem_gb}GB --cpus-per-task={cluster.nodes} --time={cluster.runtime}"
+
+#exit screen using Ctrl+A and then D
+#check status `screen -r SO289_anvio'
+
+################################################################
+#generate reference protein fasta for PD
+################################################################
+OUTDIR="$WORKDIR/04_PD_REF/"
+mkdir $OUTDIR
+
+sbatch -D `pwd` --export=ALL,WORKDIR=$WORKDIR,PROJECT=$PROJECT,REPO_DIR=$REPO_DIR \
+--job-name "generate_ref_prot4PD" $REPO_DIR/shell_scripts/run_cdhit.sh
+
+#export the gene calls table
+anvi-export-gene-calls -c $WORKDIR/03_CONTIGS/$PROJECT-contigs.db \
+                       --gene-caller Prodigal \
+                       -o $WORKDIR/03_CONTIGS/$PROJECT-gene-calls.txt
+
+#Import the reference databases into PD and run the MS analysis

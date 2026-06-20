@@ -1,0 +1,74 @@
+{
+  "__default__": {
+    "runtime": "12:00:00",
+    "nodes": 10,
+    "mem_gb": 20,
+    "slurm_partition": "basic"
+  },
+  "iu_filter_quality_minoche": {
+    "runtime" : "8:00:00",
+    "nodes": 1,
+    "mem_gb": 100,
+    "slurm_partition": "basic"
+  },
+  "bowtie": {
+    "runtime" : "48:00:00",
+    "nodes": 32,
+    "mem_gb": 400,
+    "slurm_partition": "basic"
+  },
+  "megahit": {
+    "runtime" : "96:00:00",
+    "nodes": 128,
+    "mem_gb": 1500,
+    "slurm_partition": "himem"
+  },
+    "centrifuge": {
+    "runtime" : "48:00:00",
+    "nodes": 32,
+    "mem_gb": 100,
+    "slurm_partition": "basic"
+  },
+    "anvi_run_ncbi_cogs": {
+    "runtime" : "48:00:00",
+    "nodes": 32,
+    "mem_gb": 100,
+    "slurm_partition": "basic"
+  },
+ "anvi_run_kegg_kofams": {
+    "runtime" : "32:00:00",
+    "nodes": 32,
+    "mem_gb": 100,
+    "slurm_partition": "basic"
+  },
+  "anvi_profile": {
+    "runtime" : "4:00:00",
+    "nodes": 8,
+    "mem_gb": 200,
+    "slurm_partition": "basic"
+  },
+  "anvi_merge": {
+    "runtime" : "4:00:00",
+    "nodes": 4,
+    "mem_gb": 100,
+    "slurm_partition": "basic"
+  },
+  "anvi_cluster_contigs": {
+    "runtime" : "96:00:00",
+    "nodes": 32,
+    "mem_gb": 500,
+    "slurm_partition": "basic"
+  },
+  "krakenuniq":{
+    "runtime" : "96:00:00",
+    "nodes": 32,
+    "mem_gb": 500,
+    "slurm_partition": "basic"
+  },
+  "krakenuniq_mpa_report":{
+    "runtime" : "96:00:00",
+    "nodes": 32,
+    "mem_gb": 500,
+    "slurm_partition": "basic"
+  }
+}
