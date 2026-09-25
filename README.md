@@ -12,7 +12,7 @@ The repository is linked to the following publication:
 
 - `/R/` — R scripts for data processing, protein annotation integration, taxonomic summaries, abundance analyses, and figure/table generation.
 - `/data/` — metadata files used by the analyses (for example, `samples_metadata.txt`).
-- `/anvio_wokrflow/` — anvi’o/HPC workflow configuration and shell scripts for metagenome co-assembly and downstream protein annotation steps.
+- `/anvio_wokrflow/` — anvi’o/HPC workflow configuration and shell scripts for metagenome co-assembly and downstream protein annotation steps (folder name kept as in repository).
 - `/download_data_from_Zenodo.R` — helper script to download and unpack raw/source datasets from Zenodo into `data/raw/`.
 
 ## Main analysis components
